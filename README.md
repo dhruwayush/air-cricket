@@ -27,9 +27,14 @@ The camera only works on an `https://` page, so play from the GitHub Pages link 
 ## How it works
 
 - **Three.js** renders the ground, players and ball.
+- **Players are modelled and animated in Blender** by a script (`tools/players.py`): a padded, helmeted batsman and a capped fielder, both rigged with a skeleton.
+  - The batsman has stance, backlift, straight drive, cover drive, flick, pull, cut, block, lofted drive, leave, running and non-striker idle. In every shot the bat meets the ball on the same frame, so the animation stays in sync with the timing.
+  - Fielders have idle, ready, run, catch, dive, pick-up, throw and a full bowling action.
 - Each delivery is simulated ahead of time with gravity, bounce, swing and spin.
-- Your timing against the ball's arrival sets the power. Early timing pulls the ball to the leg side and late timing pushes it to the off side.
-- Fielders work out whether they can reach the ball in time to catch it, stop it, or chase it to the rope.
+- Your timing against the ball's arrival sets the power. Early timing pulls the ball to the leg side and late timing pushes it to the off side. Drives go into the gaps, and cuts and pulls go square.
+- Fielders work out whether they can reach the ball in time to catch it, stop it, or chase it to the rope. Harder-hit balls are harder to stop.
+- The batsmen run between the wickets, and fielders pick up and throw back.
+- A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.
 
 ## Modes
@@ -38,3 +43,18 @@ The camera only works on an `https://` page, so play from the GitHub Pages link 
 - **Free nets**
 - Three bowling levels: Club, Pro, International
 - Right- or left-handed batting
+
+## Working on it
+
+| Path | What it is |
+| --- | --- |
+| `src/game.html` | The game source |
+| `tools/players.py` | Builds, rigs and animates the players in Blender and exports `tools/build/*.glb` |
+| `tools/build_page.py` | Embeds the models into `src/game.html` and writes `index.html` |
+
+```sh
+pip install bpy==4.2.0            # Blender as a Python module (Python 3.11)
+python3 tools/players.py           # rebuild the players -> tools/build/
+python3 tools/players.py bat pull,cut 0.167,0.45   # render preview frames to tools/preview/
+python3 tools/build_page.py        # rebuild index.html
+```

@@ -33,12 +33,13 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .score .slash{color:var(--muted);font-weight:700;margin:0 2px}
 .board-row{display:flex;justify-content:space-between;gap:14px;font-size:14px;white-space:nowrap;color:var(--chalk);margin-top:4px;font-variant-numeric:tabular-nums}
 .board-row b{font-weight:700;color:var(--led)}
-.strip{display:flex;gap:5px;margin-top:9px;min-height:24px}
+.strip{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px;min-height:24px;max-width:220px}
 .strip span{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:14px;border:1px solid var(--line);color:var(--chalk);font-variant-numeric:tabular-nums}
 .strip .b4{background:var(--four);color:#06210f;border-color:transparent}
 .strip .b6{background:var(--six);color:#04202e;border-color:transparent}
 .strip .bw{background:var(--wicket);color:#2a0400;border-color:transparent}
 .strip .b0{color:var(--muted)}
+.strip .bx{width:auto;min-width:24px;padding:0 5px;box-sizing:border-box;border-radius:12px;font-size:12px;letter-spacing:.02em;color:var(--led);border-color:rgba(255,182,39,.55)}
 
 .right-col{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .gun{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;text-align:right;backdrop-filter:blur(4px)}
@@ -46,6 +47,10 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .gun-v{font-family:var(--f-display);font-weight:800;font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums}
 .gun-v small{font-family:var(--f-ui);font-size:13px;font-weight:600;color:var(--muted);margin-left:4px}
 .gun-len{font-size:13px;color:var(--chalk)}
+.gun-call{display:inline-block;margin-top:6px;padding:4px 9px;border-radius:999px;font-family:var(--f-display);font-weight:900;font-size:15px;line-height:1;letter-spacing:.06em;text-transform:uppercase;animation:call .9s ease-in-out infinite alternate}
+.gun-call.free{background:var(--led);color:var(--led-ink)}
+.gun-call.nb{background:var(--wicket);color:#2a0400}
+@keyframes call{from{box-shadow:0 0 0 0 rgba(255,182,39,.0)}to{box-shadow:0 0 14px 2px rgba(255,182,39,.55)}}
 .menu-btn{pointer-events:auto;font:600 13px/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 12px;cursor:pointer}
 .menu-btn:hover{border-color:var(--led)}
 .btn-row{display:flex;gap:6px}
@@ -60,6 +65,7 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .callout.c-out .callout-main{color:var(--wicket)}
 .callout.c-runs .callout-main{color:var(--led)}
 .callout.c-quiet .callout-main{color:var(--chalk);font-size:clamp(34px,7vw,56px)}
+.callout.c-free .callout-main{color:var(--led);font-size:clamp(34px,7vw,56px)}
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 
 .bottom{position:fixed;left:0;right:0;bottom:0;padding:0 16px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
@@ -175,7 +181,7 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
   .pad .shot button{font-size:12px;white-space:nowrap}
   .board-row{gap:10px;font-size:13px}
 }
-@media (prefers-reduced-motion:reduce){ .callout.pop .callout-main{animation:none} .needle,.vm-label{transition:none} }
+@media (prefers-reduced-motion:reduce){ .callout.pop .callout-main{animation:none} .needle,.vm-label{transition:none} .gun-call{animation:none} }
 </style>
 
 <div id="stage"></div>
@@ -196,6 +202,7 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
       <div class="gun-k" id="gun-k">Over 1 · Pace</div>
       <div class="gun-v" id="gun-v">— <small>km/h</small></div>
       <div class="gun-len" id="gun-len">Awaiting delivery</div>
+      <div class="gun-call" id="gun-call" hidden></div>
     </div>
     <button class="fieldmap" id="fieldmap-wrap" type="button" aria-label="Field placings, tap to hide or show">
       <canvas id="fieldmap" width="120" height="120"></canvas>
@@ -357,6 +364,17 @@ const LEVELS = {
   pro:  { name: 'Pro',           pace: [122, 136], spin: [80, 90], W: 0.029 },
   intl: { name: 'International', pace: [138, 152], spin: [86, 96], W: 0.023 },
 };
+/* ---- line and extras ----
+   The line is where the ball passes your popping crease, measured toward the off side from middle stump.
+   Bowlers mix balls at the stumps with the corridor just outside off, balls wide of off you can leave,
+   the odd one down leg and the odd one past the wide guideline. Club bowlers spray it more. */
+const POP_Z = -1.22;                       // the striker's popping crease
+const WIDE_LINE = 0.89;                    // limited-overs wide guideline, from middle stump
+const LEG_WIDE = 0.24;                     // past the pads down the leg side, not touching the batsman
+const HEAD_WIDE = 2.03;                    // over head height at the crease
+const LINES = { leg: [-0.45, -0.2], stumps: [-0.15, 0.08], corridor: [0.08, 0.3], wideOff: [0.3, 0.72], wide: [0.93, 1.3] };
+const WILD = { club: 1.35, pro: 1, intl: 0.7 };
+const NO_BALL = { club: 0.045, pro: 0.03, intl: 0.02 };
 /* ---- what you're playing for ----
    Seeded matches (daily, random, super over) draw every delivery from rng(seed, ball number), so the
    same ball comes down for everyone no matter how they played the ones before it. */
@@ -393,7 +411,8 @@ function makeMatch(kind, opts) {
   return { kind: 'chase', label: 'Chase 36', target: 36, balls: 12, wkts: 3, bowling: 'mixed', seed: null };
 }
 let match = makeMatch('chase');
-function ballRandom(i) { return match.seed != null ? rng((match.seed ^ Math.imul(i + 1, 0x9E3779B1)) >>> 0) : Math.random; }
+// ball i of the innings; a = how many times it has been bowled again after a wide or no ball
+function ballRandom(i, a) { return match.seed != null ? rng((match.seed ^ Math.imul(i + 1, 0x9E3779B1) ^ Math.imul(a || 0, 0x7FEB352D)) >>> 0) : Math.random; }
 function overRandom(o) { return match.seed != null ? rng((match.seed ^ Math.imul(o + 7, 0x85EBCA77)) >>> 0) : Math.random; }
 function bowlerFor(o) {
   if (match.bowling === 'pace' || match.bowling === 'death') return 'pace';
@@ -668,12 +687,14 @@ const pitch = new THREE.Mesh(new THREE.PlaneGeometry(3.05, 24), new THREE.MeshLa
 pitch.rotation.x = -Math.PI / 2; pitch.position.set(0, 0.004, PITCH_C); scene.add(pitch);
 
 const lineMat = new THREE.MeshBasicMaterial({ color: 0xf7f6ef });
-function crease(x, z, w, d) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lineMat); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.008, z); scene.add(m); }
+function crease(x, z, w, d, mat) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat || lineMat); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.008, z); scene.add(m); return m; }
+const farPopMat = new THREE.MeshBasicMaterial({ color: 0xf7f6ef });   // turns red when the bowler oversteps
 [[0, 1], [FAR_Z, -1]].forEach(([sz, dir]) => {
   crease(0, sz, 2.64, 0.05);                       // bowling crease
-  crease(0, sz - 1.22 * dir, 3.66, 0.05);          // popping crease
+  crease(0, sz - 1.22 * dir, 3.66, 0.05, dir < 0 ? farPopMat : null);   // popping crease
   crease(1.32, sz - 0.0, 0.05, 2.44 + 0.4);        // return creases
   crease(-1.32, sz - 0.0, 0.05, 2.44 + 0.4);
+  [-1, 1].forEach(s => crease(s * WIDE_LINE, sz - (1.22 + 0.45) * dir, 0.035, 0.9));   // wide guidelines
 });
 
 /* stumps */
@@ -1044,10 +1065,10 @@ const bowlerHand = new THREE.Vector3();
 let bowlerFree = false;          // true once the bowler turns fielder for this ball
 function bowlerPath(t) {
   let z, x;
-  const tStride = RUNUP - CLIP_RELEASE;
+  const tStride = RUNUP - CLIP_RELEASE, land = -19.17 + (del ? del.overstep : 0);   // front heel just behind the popping crease; a no ball lands over it
   if (t < tStride) { const u = t / tStride; z = lerp(-31, -20.3, u); x = 0.5; }
-  else if (t < RUNUP + 0.2) { const u = (t - tStride) / (CLIP_RELEASE + 0.2); z = lerp(-20.3, -18.95, easeOut(u)); x = lerp(0.5, 0.38, u); }
-  else { const u = clamp((t - RUNUP - 0.2) / 1.4, 0, 1); z = lerp(-18.95, -16.9, easeOut(u)); x = lerp(0.38, 1.3, easeOut(u)); }
+  else if (t < RUNUP + 0.2) { const u = (t - tStride) / (CLIP_RELEASE + 0.2); z = lerp(-20.3, land, easeOut(u)); x = lerp(0.5, 0.38, u); }
+  else { const u = clamp((t - RUNUP - 0.2) / 1.4, 0, 1); z = lerp(land, -16.9, easeOut(u)); x = lerp(0.38, 1.3, easeOut(u)); }
   return { x, z };
 }
 function driveBowler(t) {
@@ -1182,7 +1203,9 @@ function onBodyHit(hit, now) {
   const plausible = verdict.out || /Missing|over|outside off/i.test(verdict.why);
   if (plausible && (hit.seg.part === 'pad' || hit.seg.part === 'thigh')) crowdReact('appeal');
   else if (hit.seg.part === 'head') crowdReact('ooh', 1);
-  if (verdict.out) {
+  if (verdict.out && safeBall()) {
+    finishBall(0, false, 'Not out', safeLine('Plumb LBW'), 'c-quiet');
+  } else if (verdict.out) {
     setTimeout(() => crowdReact('wicket'), 450); hitStop(0, 480, 0.35);
     finishBall(0, true, 'LBW', verdict.why, 'c-out');
   } else {
@@ -1332,7 +1355,7 @@ function makeDelivery(R) {
     else if (r < 0.62) { lenName = 'Slower ball'; len = rand(3.4, 5.4); kmh = Math.round(kmh * rand(0.7, 0.78)); }
     else if (r < 0.75) { lenName = 'Good length'; len = rand(3.8, 6.0); }
     else if (r < 0.85) { lenName = 'Short'; len = rand(6.9, 8.6); }
-    else { lenName = 'Bouncer'; len = rand(8.9, 10.6); }
+    else { lenName = 'Bouncer'; len = rand(8.8, 10.1) - (state.level === 'club' ? 0.35 : 0); }
   } else if (type === 'pace') {
     // the captain's plan for the over shifts the lengths: a short-ball plan means bouncers
     const mix = captain.plan === 'short' ? [0.04, 0.16, 0.38, 0.68] : [0.08, 0.32, 0.72, 0.9];
@@ -1340,22 +1363,39 @@ function makeDelivery(R) {
     else if (r < mix[1]) { lenName = 'Full'; len = rand(2.1, 3.4); }
     else if (r < mix[2]) { lenName = 'Good length'; len = rand(3.8, 6.2); }
     else if (r < mix[3]) { lenName = 'Short'; len = rand(6.9, 8.6); }
-    else { lenName = 'Bouncer'; len = rand(8.9, 10.6); }
+    else { lenName = 'Bouncer'; len = rand(8.8, 10.1) - (state.level === 'club' ? 0.35 : 0); }
   } else {
     if (r < 0.3) { lenName = 'Full'; len = rand(1.8, 3.0); }
     else if (r < 0.88) { lenName = 'Good length'; len = rand(3.2, 5.2); }
     else { lenName = 'Short'; len = rand(5.6, 7.0); }
   }
   const v = kmh / 3.6;
-  const lineX = hand * rand(-0.22, 0.42);
-  const rx = RELEASE.x, ry = type === 'pace' ? RELEASE.y : RELEASE.y - 0.12, rz = RELEASE.z;
-  const bz = -len;
-  const dx = lineX - rx, dz = bz - rz, dist = Math.hypot(dx, dz);
-  const t1 = dist / v;
-  const vel = { x: dx / t1, y: (BALL_R - ry + 0.5 * G * t1 * t1) / t1, z: dz / t1 };
   const swingAcc = type === 'pace' ? rand(-0.7, 0.7) : 0;
   const dev = type === 'pace' ? rand(-0.3, 0.3) : -state.spinTurn * hand * rand(0.35, 1.1);
   const fric = type === 'pace' ? 0.9 : 0.84;
+  // the line: pick a channel at the popping crease, then aim the ball at it
+  const wild = WILD[state.level], death = type === 'pace' && captain.plan === 'death';
+  const mix = type === 'spin' ? [0.045 * wild, 0.42, 0.32, 0.18, 0.025 * wild]      // leg, stumps, corridor, wide of off, wide
+    : death ? (lenName === 'Yorker' ? [0.03 * wild, 0.46, 0.1, 0.36, 0.035 * wild] : [0.045 * wild, 0.26, 0.24, 0.38, 0.045 * wild])
+    : captain.plan === 'short' ? [0.065 * wild, 0.44, 0.25, 0.19, 0.03 * wild]
+    : [0.05 * wild, 0.34, 0.32, 0.24, 0.03 * wild];
+  let pick = R() * mix.reduce((a, b) => a + b, 0), ch = 0;
+  while (ch < 4 && pick >= mix[ch]) pick -= mix[ch++];
+  const channel = ['leg', 'stumps', 'corridor', 'wideOff', 'wide'][ch];
+  const [o0, o1] = LINES[channel];
+  const creaseX = hand * rand(o0, o1);
+  if (channel === 'wideOff' && lenName === 'Yorker') lenName = 'Wide yorker';
+  // a no ball: the front foot lands over the popping crease, so the ball comes out a little nearer
+  const noBall = R() < NO_BALL[state.level] * (death ? 1.4 : 1);
+  const overstep = noBall ? rand(0.12, 0.28) : 0;
+  const rx = RELEASE.x, ry = type === 'pace' ? RELEASE.y : RELEASE.y - 0.12, rz = RELEASE.z + overstep;
+  const bz = -len;
+  // aim so the ground track reaches creaseX; allow for most of a spinner's turn after pitching
+  const turn = type === 'spin' ? 0.7 * dev * Math.max(0, len + POP_Z) / (v * fric) : 0;
+  const lineX = rx + (creaseX - turn - rx) * (bz - rz) / (POP_Z - rz);
+  const dx = lineX - rx, dz = bz - rz, dist = Math.hypot(dx, dz);
+  const t1 = dist / v;
+  const vel = { x: dx / t1, y: (BALL_R - ry + 0.5 * G * t1 * t1) / t1, z: dz / t1 };
 
   const data = []; const p = { x: rx, y: ry, z: rz };
   let bounced = false, bounceT = 0; const bouncePos = { x: 0, z: 0 };
@@ -1379,6 +1419,7 @@ function makeDelivery(R) {
   return {
     bodyY: body ? body.y : null,
     type, kmh, lenName, len, path, bounceT, bouncePos,
+    channel, noBall, overstep, rel: { x: rx, y: ry, z: rz }, pop: crossZ(path, POP_Z), freeHit: false,
     tHit: hit.t, hitPos: hit, tStumps: stumps ? stumps.t : 99, stumpsPos: stumps,
     tEnd: (path.n - 1) * DT,
     keepAt: { x: path.data[(path.n - 1) * 3], y: path.data[(path.n - 1) * 3 + 1] },
@@ -2268,11 +2309,17 @@ function updateHUD() {
     $('need').textContent = need > 0 ? `Need ${need} off ${left}` : 'Target reached';
   } else {
     $('mode-label').textContent = 'Nets';
-    $('need').textContent = state.balls ? `SR ${Math.round(state.runs / state.balls * 100)}` : 'SR —';
+    $('need').textContent = state.faced ? `SR ${strikeRate()}` : 'SR —';
   }
   const strip = $('strip'); strip.textContent = '';
-  state.strip.forEach(s => { const el = document.createElement('span'); el.textContent = s === 0 ? '•' : s; el.className = s === 'W' ? 'bw' : s === 4 ? 'b4' : s === 6 ? 'b6' : s === 0 ? 'b0' : ''; strip.appendChild(el); });
+  state.strip.forEach(s => {
+    const el = document.createElement('span'), x = typeof s === 'string' && s !== 'W';
+    el.textContent = s === 0 ? '•' : s;
+    el.className = x ? 'bx' : s === 'W' ? 'bw' : s === 4 ? 'b4' : s === 6 ? 'b6' : s === 0 ? 'b0' : '';
+    strip.appendChild(el);
+  });
 }
+function strikeRate() { return state.faced ? Math.round(state.batRuns / state.faced * 100) : 0; }
 function updateChips() {
   const f = state.foot, off = f * state.hand > 0;
   $('chip-guard').textContent = 'Guard · ' + (f === 0 ? 'Middle' : off ? 'Off side' : 'Leg side');
@@ -2360,7 +2407,8 @@ function startInnings(m) {
   readSettings();
   match = m || makeMatch(state.mode);
   if (match.level) state.level = match.level;          // the daily is the same difficulty for everyone
-  Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], log: [], foot: 0, over: 0 });
+  Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], log: [], foot: 0, over: 0,
+    extras: 0, wides: 0, noBalls: 0, faced: 0, batRuns: 0, rebowl: 0, freeHit: false });
   setupOver(0);
   placeField();
   placeActors();
@@ -2386,7 +2434,8 @@ function nextBall() {
   state.foot = 0;
   resetStumps(nearStumps); bounceMark.visible = false; bounceMark.material.opacity = 0.85; clearTrail();
   resetFielderEvent(); eventApplied = false; fm.lastShotSet = false;
-  const change = state.balls === 0 && !newOver ? null : reviewField();
+  // the field can't be changed for a free hit
+  const change = (state.balls === 0 && !newOver) || state.freeHit ? null : reviewField();
   const travel = beginSetField();
   if (change || travel > 0.6) { phase = 'setfield'; setT = 0; setDur = Math.max(travel, change ? 1.6 : 0) + 0.3; }
   if (actorsReady) {
@@ -2395,11 +2444,15 @@ function nextBall() {
     nonA.play('backup', { loop: true, fade: 0.3 });
     bowlerA.play('run', { loop: true, fade: 0.1, speed: 1.45 });
   }
-  del = makeDelivery(ballRandom(state.balls));
+  del = makeDelivery(ballRandom(state.balls, state.rebowl));
+  del.freeHit = state.freeHit;
+  farPopMat.color.set(0xf7f6ef);
+  setCall(state.freeHit ? 'Free hit' : '', 'free');
   $('gun-k').textContent = `Over ${state.over + 1} · ${state.bowlerType === 'pace' ? 'Pace' : (state.spinTurn > 0 ? 'Off-spin' : 'Leg-spin')}`;
   $('gun-v').innerHTML = '— <small>km/h</small>'; $('gun-len').textContent = 'Running in';
   $('meter').classList.add('dim'); $('needle').hidden = true; $('meter-label').textContent = 'Timing'; $('meter-label').style.top = '50%';
-  if (state.balls === 0 && match.kind !== 'chase' && match.kind !== 'nets') callout(match.label + (match.practice ? ' · practice' : ''), matchIntro(), 'c-quiet');
+  if (state.freeHit) callout('Free hit', 'Swing freely: you can’t be out', 'c-free');
+  else if (state.balls === 0 && !state.rebowl && match.kind !== 'chase' && match.kind !== 'nets') callout(match.label + (match.practice ? ' · practice' : ''), matchIntro(), 'c-quiet');
   else if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
   else if (change) callout(change.main, change.sub, 'c-quiet');
   else if (newOver && captain.plan === 'short') callout('Short-ball plan', 'Expect bouncers this over', 'c-quiet');
@@ -2408,15 +2461,52 @@ function nextBall() {
 }
 function showDeliveryInfo() {
   $('gun-v').innerHTML = `${del.kmh} <small>km/h</small>`;
-  $('gun-len').textContent = del.lenName;
+  $('gun-len').textContent = del.lenName + (del.noBall ? ' · no ball' : '');
 }
-function finishBall(runs, wicket, headline, sub, cls) {
-  state.runs += runs; state.balls++;
+/* ---- extras ---- */
+// on a no ball, and on the free hit after it, you can't be out bowled, caught or LBW
+function safeBall() { return !!del && (del.noBall || del.freeHit); }
+function safeLine(how) { return del.noBall ? `${how} off a no ball` : `${how}, but it’s a free hit`; }
+// a ball you didn't touch that passed out of reach; stepping toward it brings it into reach
+function wideCall() {
+  const p = del.pop; if (!p || padHit) return null;
+  const off = p.x * state.hand, toward = state.foot * state.hand;
+  if (p.y > HEAD_WIDE) return 'Over head height';
+  if (off > WIDE_LINE + Math.max(0, toward) * FOOT_STEP) return 'Outside the guideline';
+  if (off < -(LEG_WIDE + Math.max(0, -toward) * FOOT_STEP)) return 'Down the leg side';
+  return null;
+}
+function setCall(text, kind) {
+  const c = $('gun-call');
+  c.hidden = !text; c.textContent = text || '';
+  c.className = 'gun-call ' + (kind || '');
+}
+function callNoBall() {
+  setCall('No ball', 'nb');
+  farPopMat.color.set(0xff6152);
+  $('gun-len').textContent = 'Overstepped';
+  crowdReact('ooh', 0.5);
+}
+function finishBall(runs, wicket, headline, sub, cls, wide) {
+  const extra = del && del.noBall ? 'nb' : wide ? 'wd' : '';
+  state.runs += runs + (extra ? 1 : 0);
+  if (extra) { state.extras++; state.rebowl++; if (extra === 'wd') state.wides++; else state.noBalls++; }
+  else { state.balls++; state.rebowl = 0; }
+  if (extra !== 'wd') { state.faced++; state.batRuns += runs; }
   if (wicket) state.wkts++;
   if (runs === 4) state.fours++; if (runs === 6) state.sixes++;
-  if (!wicket && runs === 0) state.dots++;
-  state.strip.push(wicket ? 'W' : runs);
-  (state.log = state.log || []).push(wicket ? 'W' : runs);
+  if (!extra && !wicket && runs === 0) state.dots++;
+  const mark = wicket ? 'W' : extra === 'wd' ? 'wd' : extra ? 'nb' + (runs || '') : runs;
+  state.strip.push(mark);
+  (state.log = state.log || []).push(mark);
+  // a no ball earns a free hit; it carries over a wide, and a legal ball uses it up
+  if (extra === 'nb') {
+    state.freeHit = true;
+    if (headline === 'Not out') sub += ' · free hit next ball';
+    else if (runs === 0 && cls === 'c-quiet') { sub = `${headline} · free hit next ball`; headline = 'No ball'; cls = 'c-runs'; }
+    else sub = `${sub} · plus a no ball · free hit next`;
+  } else if (extra === 'wd') { if (state.freeHit) sub += ' · free hit stays'; }
+  else state.freeHit = false;
   state.over1Hint = false;
   const endAt = event && event.x != null && event.type !== 'body' ? event : null;
   captainNotes(runs, wicket, endAt ? endAt.x : null, endAt ? endAt.z : null);
@@ -2466,8 +2556,13 @@ function recordResult(res) {
 }
 function shareText(r) {
   const url = /^https?:/.test(location.protocol) && !/claude\.ai|claudeusercontent/.test(location.host) ? location.origin + location.pathname : 'https://dhruwayush.github.io/air-cricket/';
-  const overs = []; const log = r.log.split(' ');
-  for (let i = 0; i < log.length; i += 6) overs.push(log.slice(i, i + 6).map(x => x === '0' ? '.' : x).join(' '));
+  // group by over: six legal balls, with wides and no balls shown where they came
+  const overs = []; let cur = [], legal = 0;
+  for (const x of r.log.split(' ').filter(Boolean)) {
+    cur.push(x === '0' ? '.' : x);
+    if (!/^(wd|nb)/.test(x) && ++legal % 6 === 0) { overs.push(cur.join(' ')); cur = []; }
+  }
+  if (cur.length) overs.push(cur.join(' '));
   const verdict = r.won ? `Won with ${plural(match.balls - r.balls, 'ball')} to spare` : r.tie ? 'Tied' : `${match.target - r.runs} short`;
   return `Air Cricket · Daily #${match.num}\n${match.target} to win off ${match.balls} · ${BOWLING[match.bowling]}\n${r.runs}/${r.wkts} off ${plural(r.balls, 'ball')} · ${verdict}\n${overs.join(' | ')}\n${url}`;
 }
@@ -2489,7 +2584,8 @@ function showEnd(res) {
     ? `Won with ${plural(left, 'ball')} to spare and ${plural(wLeft, 'wicket')} in hand.`
     : res === 'tie' ? (sup ? `Level on ${state.runs}. Another Super Over decides it.` : 'One run short of the win. It goes down as a tie.')
     : `${plural(need, 'run')} short${state.wkts >= m.wkts ? ', all out' : ''}.`;
-  const sr = state.balls ? Math.round(state.runs / state.balls * 100) : 0;
+  if (state.extras) $('end-line').textContent += ` Extras: ${state.extras} (${[state.wides && plural(state.wides, 'wide'), state.noBalls && plural(state.noBalls, 'no ball')].filter(Boolean).join(', ')}).`;
+  const sr = strikeRate();
   $('end-stats').innerHTML = [[`${state.runs}/${state.wkts}`, 'Score'], [oversText(state.balls), 'Overs'], [`${state.fours} · ${state.sixes}`, '4s · 6s'], [sr, 'Strike rate']]
     .map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
   $('share-text').hidden = true;
@@ -2769,10 +2865,12 @@ function tick(ms) {
     if (runupT - audioBed > 0.25) { audioBed = runupT; sound.runup(runupT / RUNUP); }
     // ball rides in the bowler's hand, easing onto the release point
     const k = smooth(clamp((runupT - (RUNUP - 0.12)) / 0.12, 0, 1));
-    ballPos.set(lerp(bowlerHand.x, RELEASE.x, k), lerp(bowlerHand.y, RELEASE.y, k), lerp(bowlerHand.z, RELEASE.z, k));
-    if (!actorsReady) ballPos.set(RELEASE.x, RELEASE.y, RELEASE.z);
+    const rel = del.rel;
+    ballPos.set(lerp(bowlerHand.x, rel.x, k), lerp(bowlerHand.y, rel.y, k), lerp(bowlerHand.z, rel.z, k));
+    if (!actorsReady) ballPos.set(rel.x, rel.y, rel.z);
     if (runupT >= RUNUP) {
       phase = 'delivery'; relWall = now - (runupT - RUNUP); trail.visible = true; sound.hush();
+      if (del.noBall) callNoBall();
       if (state.level === 'club') { bounceMark.position.set(del.bouncePos.x, 0.012, del.bouncePos.z); bounceMark.visible = true; bounceMark.material.opacity = 0.35; }
     }
   }
@@ -2801,21 +2899,37 @@ function tick(ms) {
         bowledChecked = true;
         const sp = del.stumpsPos;
         if (sp && Math.abs(sp.x) < 0.1143 + BALL_R * 0.8 && sp.y < 0.71 + BALL_R) {
-          knockStumps(nearStumps, sp.x); sound.rattle(); crowdReact('wicket');
-          hitStop(0, 520, 0.3); fx.shake = 0.05;
+          knockStumps(nearStumps, sp.x); sound.rattle(); fx.shake = 0.05;
+          if (safeBall()) crowdReact('ooh', 1);
+          else { crowdReact('wicket'); hitStop(0, 520, 0.3); }
           deadInfo = { bowled: true };
         }
       }
       if (deadInfo && deadInfo.bowled && !deadInfo.done) {
         deadInfo.done = true;
-        finishBall(0, true, 'Bowled', swing ? (swing.outcome === 'beaten' ? 'Played down the wrong line' : timingLabel(swing.err || 0, LEVELS[state.level].W)) : 'Left it, and it hit the stumps', 'c-out');
+        if (safeBall()) finishBall(0, false, 'Not out', safeLine('Bowled'), 'c-quiet');
+        else finishBall(0, true, 'Bowled', swing ? (swing.outcome === 'beaten' ? 'Played down the wrong line' : timingLabel(swing.err || 0, LEVELS[state.level].W)) : 'Left it, and it hit the stumps', 'c-out');
       } else if (!pending && td >= del.tEnd) {
         if (keeperHold) sound.glove(0.8);
-        const o = swing ? swing.outcome : null;
-        if (del.stumpsPos && Math.abs(del.stumpsPos.x) < 0.3 && del.stumpsPos.y < 1.0) crowdReact('ooh', swing ? 1 : 0.6);   // just over or past the stumps
-        const head = !swing ? 'Left alone' : o === 'beaten' ? 'Beaten' : o === 'over' ? 'Over the bat' : 'Played and missed';
-        const sub = !swing ? 'No shot offered' : o === 'beaten' ? 'Bat was on the wrong line. Step across with A / D' : timingLabel(swing.err, LEVELS[state.level].W);
-        finishBall(0, false, head, sub, 'c-quiet');
+        const o = swing ? swing.outcome : null, sp = del.stumpsPos;
+        const close = sp && Math.abs(sp.x) < 0.3 && sp.y < 1.0;
+        const wide = del.noBall ? null : wideCall();
+        if (wide) {
+          crowdReact('runs', 0.4);
+          finishBall(0, false, 'Wide', wide, 'c-runs', true);
+        } else {
+          if (close) crowdReact('ooh', swing ? 1 : 0.6);   // just over or past the stumps
+          let head = !swing ? 'Left alone' : o === 'beaten' ? 'Beaten' : o === 'over' ? 'Over the bat' : 'Played and missed';
+          let sub = !swing ? 'No shot offered' : o === 'beaten' ? 'Bat was on the wrong line. Step across with A / D' : timingLabel(swing.err, LEVELS[state.level].W);
+          if (!swing && sp) {
+            const off = sp.x * state.hand;
+            if (close) sub = sp.y > 0.71 + BALL_R ? 'Just over the stumps' : off > 0 ? 'Just past off stump' : 'Just past leg stump';
+            else if (off > 0.3) { head = 'Good leave'; sub = 'Well outside off stump'; }
+            else if (sp.y > 1.0) sub = 'Over the stumps';
+            else if (off < 0) sub = 'Down the leg side';
+          }
+          finishBall(0, false, head, sub, 'c-quiet');
+        }
       }
     }
   }
@@ -2831,12 +2945,16 @@ function tick(ms) {
       eventApplied = true;
       const name = swing.name, ev = event;
       if (ev.type === 'playedon') {
-        knockStumps(nearStumps, ev.x); sound.rattle(); crowdReact('wicket'); hitStop(0, 450, 0.35); fx.shake = 0.04;
-        finishBall(0, true, 'Bowled', `Played on · ${swing.name.toLowerCase()}`, 'c-out');
+        knockStumps(nearStumps, ev.x); sound.rattle(); fx.shake = 0.04;
+        if (safeBall()) { crowdReact('ooh', 1); finishBall(0, false, 'Not out', safeLine('Played on'), 'c-quiet'); }
+        else { crowdReact('wicket'); hitStop(0, 450, 0.35); finishBall(0, true, 'Bowled', `Played on · ${swing.name.toLowerCase()}`, 'c-out'); }
       }
       else if (ev.type === 'six') { crowdReact('six'); finishBall(6, false, 'Six', `${name}${ev.carry ? ' · ' + ev.carry + ' m' : ''}`, 'c-six'); }
       else if (ev.type === 'four') { crowdReact('four'); finishBall(4, false, 'Four', name, 'c-four'); }
-      else if (ev.type === 'catch') {
+      else if (ev.type === 'catch' && safeBall()) {
+        sound.glove(1); crowdReact('groan');
+        finishBall(0, false, 'Not out', safeLine(ev.f === keeper ? 'Caught behind' : ev.f === bowlerFielder ? 'Caught and bowled' : 'Caught at ' + ev.f.name.toLowerCase()), 'c-quiet');
+      } else if (ev.type === 'catch') {
         sound.glove(1); crowdReact('wicket');
         const who = ev.f === keeper ? 'Caught behind' : ev.f === bowlerFielder ? 'Caught and bowled' : 'Caught';
         finishBall(0, true, who, ev.f === keeper || ev.f === bowlerFielder ? name : `${name} · c ${ev.f.name}`, 'c-out');
@@ -2926,8 +3044,8 @@ function tick(ms) {
 }
 
 /* test hook, only with ?debug in the address */
-if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, get swing() { return swing; }, get event() { return event; },
-  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, shareText, loadRecords, get match() { return match; } };
+if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, set del(v) { del = v; }, get swing() { return swing; }, get event() { return event; },
+  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, get match() { return match; } };
 
 /* boot: idle scene behind the menu while the players load */
 state.hand = 1;

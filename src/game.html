@@ -79,13 +79,21 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .hint kbd{font:600 12px/1 var(--f-ui);color:var(--chalk);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:2px 5px;background:rgba(255,255,255,.05)}
 
 /* touch pad (phones / tablets) */
-.pad{display:none;pointer-events:auto;width:min(420px,100%);gap:6px;grid-template-columns:repeat(4,1fr)}
-.pad button{font:700 14px/1 var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 4px;touch-action:none}
-.pad .shot{grid-column:span 4;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.pad .shot button{padding:20px 4px;font-size:15px;background:rgba(255,182,39,.16);border-color:rgba(255,182,39,.5)}
+.pad{display:none;pointer-events:auto;width:min(440px,100%);gap:6px;flex-direction:column}
+.pad button{font:700 13px/1 var(--f-ui);letter-spacing:.05em;text-transform:uppercase;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 2px;touch-action:none;min-width:0}
+.pad-top{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.pad .shot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.pad .shot button{padding:16px 4px;font-size:14px;background:rgba(255,182,39,.16);border-color:rgba(255,182,39,.5)}
+.pad .shot button.blk{background:var(--panel);border-color:var(--line)}
 .pad button.on{background:var(--led);color:var(--led-ink)}
 .pad button:active{transform:translateY(1px)}
-@media (pointer:coarse){ .pad{display:grid} .hint{display:none} }
+@media (pointer:coarse){ .pad{display:flex} .hint{display:none} }
+.fieldmap{pointer-events:auto;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 6px 5px;color:var(--chalk);font:inherit}
+.fieldmap canvas{width:120px;height:120px;display:block}
+.fieldmap.min canvas{display:none}
+.fm-name{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);max-width:120px;text-align:center;line-height:1.2}
+.fieldmap:focus-visible{outline:2px solid var(--chalk);outline-offset:2px}
+@media (max-width:520px){ .fieldmap canvas{width:84px;height:84px} .fm-name{max-width:84px;font-size:10px} }
 
 /* ---------- overlays ---------- */
 .overlay{position:fixed;inset:0;display:grid;place-items:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);background:rgba(3,10,13,.66);backdrop-filter:blur(3px);overflow:auto;z-index:5}
@@ -166,6 +174,10 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
       <div class="gun-v" id="gun-v">— <small>km/h</small></div>
       <div class="gun-len" id="gun-len">Awaiting delivery</div>
     </div>
+    <button class="fieldmap" id="fieldmap-wrap" type="button" aria-label="Field placings, tap to hide or show">
+      <canvas id="fieldmap" width="120" height="120"></canvas>
+      <span class="fm-name" id="fm-name">Field</span>
+    </button>
     <button class="menu-btn" id="btn-menu" type="button">Menu</button>
   </div>
 </div>
@@ -186,16 +198,26 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
     <span class="chip" id="chip-guard">Guard · Middle</span>
     <span class="chip" id="chip-loft">Aerial off</span>
   </div>
-  <div class="hint"><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> shots · <kbd>↓</kbd> block · hold <kbd>Shift</kbd> to loft · <kbd>A</kbd>/<kbd>D</kbd> step</div>
+  <div class="hint">Arrows aim · <kbd>↑</kbd>+<kbd>←</kbd> drives · <kbd>↓</kbd>+<kbd>→</kbd> fine · <kbd>↓</kbd> block · <kbd>Shift</kbd> loft · <kbd>Q</kbd> sweep <kbd>E</kbd> reverse <kbd>R</kbd> scoop · <kbd>A</kbd>/<kbd>D</kbd> step · <kbd>M</kbd> field</div>
   <div class="pad" id="pad">
-    <button type="button" data-step="-1">◀ Step</button>
-    <button type="button" data-act="block">Block</button>
-    <button type="button" data-act="loft" id="pad-loft">Loft</button>
-    <button type="button" data-step="1">Step ▶</button>
+    <div class="pad-top">
+      <button type="button" data-step="-1">◀ Step</button>
+      <button type="button" data-act="loft" id="pad-loft">Loft</button>
+      <button type="button" data-family="sweep">Sweep</button>
+      <button type="button" data-family="reverse">Rev</button>
+      <button type="button" data-family="scoop">Scoop</button>
+      <button type="button" data-step="1">Step ▶</button>
+    </div>
     <div class="shot">
-      <button type="button" data-shot="left">◀ Left</button>
-      <button type="button" data-shot="straight">Straight</button>
-      <button type="button" data-shot="right">Right ▶</button>
+      <button type="button" data-shot="upleft">↖ Drive</button>
+      <button type="button" data-shot="up">↑ Straight</button>
+      <button type="button" data-shot="upright">Drive ↗</button>
+      <button type="button" data-shot="left">← Square</button>
+      <button type="button" data-shot="down" class="blk">Block</button>
+      <button type="button" data-shot="right">Square →</button>
+      <button type="button" data-shot="downleft">↙ Fine</button>
+      <span></span>
+      <button type="button" data-shot="downright">Fine ↘</button>
     </div>
   </div>
 </div>
@@ -204,13 +226,16 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
   <div class="sheet" role="dialog" aria-labelledby="menu-title">
     <p class="eyebrow">Night nets · keyboard build</p>
     <h1 id="menu-title">Air Cricket</h1>
-    <p class="lede">Face pace and spin under the lights. Timing decides the power, your key decides the direction. Watch the ball's shadow to read the length.</p>
+    <p class="lede">Face pace and spin under the lights. Aim with the arrows; the length decides front foot or back, and timing decides how sweetly you middle it. Watch the field map and find the gaps.</p>
     <div class="keys">
-      <div class="krow"><span class="kk"><kbd>←</kbd><kbd>→</kbd></span><span>Hit to the left or right side</span></div>
-      <div class="krow"><span class="kk"><kbd>↑</kbd><kbd>Space</kbd></span><span>Straight drive</span></div>
-      <div class="krow"><span class="kk"><kbd>↓</kbd></span><span>Block the ball</span></div>
-      <div class="krow"><span class="kk"><kbd>Shift</kbd></span><span>Hold while swinging to hit it in the air</span></div>
-      <div class="krow"><span class="kk"><kbd>A</kbd><kbd>D</kbd></span><span>Step across the crease before the ball arrives</span></div>
+      <div class="krow"><span class="kk"><kbd>↑</kbd></span><span>Straight: drive, or punch off the back foot</span></div>
+      <div class="krow"><span class="kk"><kbd>↑</kbd><kbd>←</kbd><kbd>→</kbd></span><span>Press together to drive through cover or mid-on</span></div>
+      <div class="krow"><span class="kk"><kbd>←</kbd><kbd>→</kbd></span><span>Square: cut, pull, square drive or flick</span></div>
+      <div class="krow"><span class="kk"><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span><span>Press together to play fine: glance or late cut</span></div>
+      <div class="krow"><span class="kk"><kbd>↓</kbd></span><span>Block</span></div>
+      <div class="krow"><span class="kk"><kbd>Shift</kbd></span><span>Hold to hit it in the air: lofts, hooks, upper cuts</span></div>
+      <div class="krow"><span class="kk"><kbd>Q</kbd><kbd>E</kbd><kbd>R</kbd></span><span>Sweep, reverse sweep, scoop</span></div>
+      <div class="krow"><span class="kk"><kbd>A</kbd><kbd>D</kbd></span><span>Step across before the ball arrives · <kbd>M</kbd> field map</span></div>
     </div>
     <div class="settings">
       <fieldset class="seg-wrap"><legend>Mode</legend><div class="seg">
@@ -372,6 +397,19 @@ ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, PITCH_C); scene.add(
 /* boundary rope */
 const rope = new THREE.Mesh(new THREE.TorusGeometry(BOUNDARY_R, 0.14, 6, 180), lam(0xf4f1e6));
 rope.rotation.x = Math.PI / 2; rope.position.set(0, 0.12, PITCH_C); scene.add(rope);
+
+/* the 30-yard circle: white discs round both sets of stumps, joined along the sides */
+{
+  const pts = [];
+  const step = 3.2;
+  for (let a = 0; a <= Math.PI + 1e-6; a += step / 27.4) pts.push([27.4 * Math.cos(a), 27.4 * Math.sin(a)]);                 // behind the striker
+  for (let a = Math.PI; a <= 2 * Math.PI + 1e-6; a += step / 27.4) pts.push([27.4 * Math.cos(a), FAR_Z + 27.4 * Math.sin(a)]); // behind the bowler
+  for (let z = FAR_Z + step; z < 0; z += step) { pts.push([27.4, z]); pts.push([-27.4, z]); }
+  const dots = new THREE.InstancedMesh(new THREE.CircleGeometry(0.22, 12), new THREE.MeshBasicMaterial({ color: 0xf2f2ea, transparent: true, opacity: 0.8 }), pts.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), one = new THREE.Vector3(1, 1, 1);
+  pts.forEach(([x, z], i) => dots.setMatrixAt(i, m.compose(new THREE.Vector3(x, 0.012, z), q, one)));
+  scene.add(dots);
+}
 
 /* LED hoardings */
 const adTex = canvasTex(2048, 64, (g, w, h) => {
@@ -603,30 +641,159 @@ let strikerA = null, nonA = null, bowlerA = null;
 const STANCE_X = -0.24;   // middle-and-leg guard: pads in front of leg and middle stump
 const striker = { x: STANCE_X, yawRun: 0 };
 
-/* ---- fielding side (logic lives here; actors attach once models load) ---- */
+/* ---- fielding side: nine fielders + keeper + bowler = eleven ----
+   Positions are named and placed by angle from the striker (0 = straight, + = off side) and distance;
+   'deep' means just inside the rope along that line. The captain picks a field for the bowler and the
+   situation, then plugs the gaps you keep finding. At most five can stand outside the 30-yard circle. */
+const KEEP_Z = 3.5;                     // keeper squats this far behind the stumps
+const RING_R = 27.4;                    // the 30-yard circle, measured from each set of stumps
+const DEEP_R = BOUNDARY_R - 3.5;        // boundary riders stand just inside the rope
+const MAX_OUT = 5;
+const POSITIONS = {
+  'First slip': [164, 5.3, 'close'], 'Second slip': [156, 5.9, 'close'], 'Gully': [130, 8, 'close'],
+  'Leg slip': [-162, 5.4, 'close'], 'Short leg': [-96, 4.6, 'close'], 'Silly point': [84, 4.6, 'close'], 'Leg gully': [-130, 8, 'close'],
+  'Point': [96, 24], 'Backward point': [114, 21], 'Cover point': [78, 25], 'Cover': [60, 27], 'Extra cover': [44, 27], 'Mid-off': [20, 26],
+  'Mid-on': [-20, 26], 'Midwicket': [-58, 26], 'Square leg': [-96, 24], 'Backward square leg': [-118, 21],
+  'Short fine leg': [-150, 18], 'Short third man': [148, 18],
+  'Third man': [140, 'deep'], 'Deep backward point': [114, 'deep'], 'Deep point': [95, 'deep'], 'Deep cover': [62, 'deep'], 'Long-off': [14, 'deep'],
+  'Long-on': [-14, 'deep'], 'Deep midwicket': [-58, 'deep'], 'Deep square leg': [-96, 'deep'], 'Deep backward square': [-120, 'deep'], 'Fine leg': [-152, 'deep'],
+};
+const DEEP_NAMES = Object.keys(POSITIONS).filter(n => POSITIONS[n][1] === 'deep');
+const FIELD_PRESETS = {
+  paceAttack:   { label: 'Attacking field',      note: 'Two slips and a gully',                  names: ['First slip', 'Second slip', 'Gully', 'Point', 'Cover', 'Mid-off', 'Mid-on', 'Square leg', 'Fine leg'] },
+  paceStandard: { label: 'Standard field',       note: 'A slip, third man and fine leg back',    names: ['First slip', 'Point', 'Cover', 'Mid-off', 'Mid-on', 'Midwicket', 'Square leg', 'Third man', 'Fine leg'] },
+  paceDefence:  { label: 'Boundary riders',      note: 'Five out on the rope',                   names: ['Deep point', 'Cover', 'Long-off', 'Long-on', 'Deep midwicket', 'Deep square leg', 'Short fine leg', 'Short third man', 'Mid-off'] },
+  shortBall:    { label: 'Short-ball trap',      note: 'Two back for the hook, short leg in',    names: ['First slip', 'Gully', 'Point', 'Mid-off', 'Short leg', 'Midwicket', 'Deep square leg', 'Fine leg', 'Leg gully'] },
+  spinAttack:   { label: 'Spin: catchers in',    note: 'Slip, short leg and silly point',        names: ['First slip', 'Short leg', 'Silly point', 'Cover', 'Mid-off', 'Mid-on', 'Midwicket', 'Deep midwicket', 'Short fine leg'] },
+  spinStandard: { label: 'Standard spin field',  note: 'Long-on and deep midwicket back',        names: ['First slip', 'Point', 'Cover', 'Mid-off', 'Long-on', 'Deep midwicket', 'Square leg', 'Short fine leg', 'Extra cover'] },
+  spinDefence:  { label: 'Spin: everyone back',  note: 'Five on the rope',                       names: ['Long-off', 'Long-on', 'Deep midwicket', 'Deep cover', 'Deep square leg', 'Point', 'Cover', 'Midwicket', 'Short fine leg'] },
+  savingOne:    { label: 'Ring field',           note: 'Everyone in to save the single',         names: ['First slip', 'Point', 'Cover', 'Mid-off', 'Mid-on', 'Midwicket', 'Square leg', 'Short fine leg', 'Short third man'] },
+};
+const CLASS_STATS = {
+  close: { speed: 4.2, react: 0.1,  catchReach: 1.05, groundReach: 0.9,  catchH: 2.3 },
+  ring:  { speed: 7.2, react: 0.28, catchReach: 1.4,  groundReach: 1.25, catchH: 2.9 },
+  deep:  { speed: 7.6, react: 0.32, catchReach: 1.7,  groundReach: 1.3,  catchH: 3.0 },
+};
+function posClass(name) { const P = POSITIONS[name]; return P[2] === 'close' ? 'close' : P[1] === 'deep' ? 'deep' : 'ring'; }
+function fieldSpot(name, out) {
+  const [ang, dist] = POSITIONS[name], a = ang * DEG;
+  const dx = state.hand * Math.sin(a), dz = -Math.cos(a);
+  let d = dist;
+  if (dist === 'deep') {                 // walk out along the line until just inside the rope
+    const oz = BAT_Z - PITCH_C, b = dz * oz, c = oz * oz - DEEP_R * DEEP_R;
+    d = -b + Math.sqrt(b * b - c);
+  }
+  return out.set(dx * d, 0, BAT_Z + dz * d);
+}
+function outsideRing(p) { const z = clamp(p.z, FAR_Z, 0); return Math.hypot(p.x, p.z - z) > RING_R; }
+function angDiff(a, b) { let d = a - b; while (d > 180) d -= 360; while (d < -180) d += 360; return d; }
+
 const fielders = [];
-const FIELD_SET = [
-  ['Mid-off', 22, 27], ['Mid-on', -22, 27], ['Cover', 62, 29], ['Point', 96, 25],
-  ['Midwicket', -62, 29], ['Square leg', -98, 27], ['Third man', 138, 46], ['Fine leg', -140, 46], ['Long-on', -14, 60],
-];
 function addFielder(name, opts) {
-  const f = Object.assign({ name, home: new THREE.Vector3(), pos: new THREE.Vector3(), speed: 7.0, react: 0.3, catchReach: 1.4, groundReach: 1.2, catchH: 2.9, hidden: false, actor: null, anim: '' }, opts);
+  const f = Object.assign({ name, spot: '', cls: 'ring', home: new THREE.Vector3(), pos: new THREE.Vector3(), from: new THREE.Vector3(),
+    speed: 7.0, react: 0.3, catchReach: 1.4, groundReach: 1.2, catchH: 2.9, hidden: false, actor: null, anim: '' }, opts);
   fielders.push(f); return f;
 }
-FIELD_SET.forEach(([n]) => addFielder(n));
-const KEEP_Z = 3.5;   // keeper squats this far behind the stumps
-const keeper = addFielder('Keeper', { role: 'keeper', speed: 3.2, react: 0.05, catchReach: 1.1, groundReach: 0.9, catchH: 2.1 });
-const slip = addFielder('First slip', { role: 'slip', speed: 3.6, react: 0.1, catchReach: 1.0, groundReach: 0.8, catchH: 2.2 });
+for (let i = 0; i < 9; i++) addFielder('Fielder');
+const FIELD9 = fielders.slice(0, 9);
+const keeper = addFielder('Keeper', { role: 'keeper', cls: 'keeper', speed: 3.2, react: 0.05, catchReach: 1.1, groundReach: 0.9, catchH: 2.1 });
 const bowlerFielder = addFielder('Bowler', { hidden: true, speed: 5.5, react: 0.25, catchReach: 1.2, groundReach: 1.0, catchH: 2.4 });
-function placeField() {
-  const hand = state.hand;
-  FIELD_SET.forEach(([n, a, d], i) => {
-    const f = fielders[i];
-    f.home.set(hand * Math.sin(a * DEG) * d, 0, BAT_Z - Math.cos(a * DEG) * d);
-    f.pos.copy(f.home);
-  });
-  keeper.home.set(0, 0, KEEP_Z); slip.home.set(hand * 1.45, 0, KEEP_Z + 0.35); bowlerFielder.home.set(1.3, 0, -16.9);
-  [keeper, slip, bowlerFielder].forEach(f => f.pos.copy(f.home));
+
+/* ---- the captain ---- */
+const captain = { preset: null, names: null, plan: 'normal', heat: new Array(8).fill(0), lastWicket: -99, recent: [], label: '', note: '' };
+function sectorOf(x, z) { const a = Math.atan2(x * state.hand, -(z - BAT_Z)) / DEG; return clamp(Math.floor((a + 180) / 45), 0, 7); }
+function sectorAngle(i) { return i * 45 - 180 + 22.5; }
+function situation() {
+  const sinceWicket = state.balls - captain.lastWicket;
+  if (state.mode === 'chase') {
+    const need = CHASE.target - state.runs, left = Math.max(1, CHASE.balls - state.balls), rate = need / left;
+    if (sinceWicket <= 2 || CHASE.wkts - state.wkts <= 1) return 'attack';      // new batsman or last pair: go for the wicket
+    if (need <= 3) return 'ring';
+    if (rate >= 2.4) return 'defend';
+    if (rate <= 1.2) return 'attack';
+    return 'standard';
+  }
+  const r = captain.recent, sr = r.length ? r.reduce((a, b) => a + b, 0) / r.length * 100 : 100;
+  if (sinceWicket <= 2) return 'attack';
+  if (r.length >= 3 && sr >= 200) return 'defend';
+  if (r.length >= 4 && sr <= 60) return 'attack';
+  return 'standard';
+}
+function presetFor(sit) {
+  const pace = state.bowlerType === 'pace';
+  if (sit === 'ring') return 'savingOne';
+  if (pace && captain.plan === 'short' && sit !== 'defend') return 'shortBall';
+  return (pace ? 'pace' : 'spin') + { attack: 'Attack', standard: 'Standard', defend: 'Defence' }[sit];
+}
+function regionRuns(name) {
+  const ang = POSITIONS[name][0]; let r = 0;
+  for (let i = 0; i < 8; i++) if (Math.abs(angDiff(sectorAngle(i), ang)) < 50) r += captain.heat[i];
+  return r;
+}
+function planField() {
+  const presetKey = presetFor(situation());
+  const names = FIELD_PRESETS[presetKey].names.slice(), moves = [];
+  const deepCount = () => names.filter(n => POSITIONS[n][1] === 'deep').length;
+  const hot = captain.heat.map((h, i) => [h, i]).filter(([h]) => h >= 5).sort((a, b) => b[0] - a[0]);
+  for (const [, sct] of hot) {                                   // plug the gaps you keep hitting
+    const ang = sectorAngle(sct);
+    if (names.some(n => POSITIONS[n][1] === 'deep' && Math.abs(angDiff(POSITIONS[n][0], ang)) < 32)) continue;
+    const target = DEEP_NAMES.filter(n => !names.includes(n))
+      .sort((a, b) => Math.abs(angDiff(POSITIONS[a][0], ang)) - Math.abs(angDiff(POSITIONS[b][0], ang)))[0];
+    if (!target || Math.abs(angDiff(POSITIONS[target][0], ang)) > 40) continue;
+    const full = deepCount() >= MAX_OUT;
+    const pool = names.filter(n => full ? POSITIONS[n][1] === 'deep' : POSITIONS[n][1] !== 'deep' && POSITIONS[n][2] !== 'close');
+    if (!pool.length) continue;
+    const quiet = pool.sort((a, b) => regionRuns(a) - regionRuns(b))[0];
+    if (regionRuns(quiet) >= captain.heat[sct]) continue;
+    names[names.indexOf(quiet)] = target;
+    moves.push(`${quiet} to ${target.toLowerCase()}`);
+  }
+  return { presetKey, names, moves };
+}
+/* send the nine to their spots, each going to the nearest free one */
+function applyField(names, instant) {
+  const spots = names.map(n => ({ n, p: fieldSpot(n, new THREE.Vector3()) }));
+  const pairs = [];
+  FIELD9.forEach(f => spots.forEach(sp => pairs.push({ f, sp, d: f.pos.distanceTo(sp.p) + (f.spot === sp.n ? -1000 : 0) })));
+  pairs.sort((a, b) => a.d - b.d);
+  const usedF = new Set(), usedS = new Set();
+  for (const { f, sp } of pairs) {
+    if (usedF.has(f) || usedS.has(sp)) continue;
+    usedF.add(f); usedS.add(sp);
+    f.spot = sp.n; f.name = sp.n; f.cls = posClass(sp.n); Object.assign(f, CLASS_STATS[f.cls]); f.home.copy(sp.p);
+    if (instant) f.pos.copy(sp.p);
+  }
+  keeper.home.set(0, 0, KEEP_Z); bowlerFielder.home.set(1.3, 0, -16.9);
+  if (instant) { keeper.pos.copy(keeper.home); bowlerFielder.pos.copy(bowlerFielder.home); }
+}
+function placeField() {          // start of an innings: set the field straight away
+  captain.preset = null; captain.names = null; captain.heat.fill(0); captain.recent = []; captain.lastWicket = -99;
+  const plan = planField();
+  applyField(plan.names, true);
+  captain.preset = plan.presetKey; captain.names = plan.names;
+  captain.label = FIELD_PRESETS[plan.presetKey].label; captain.note = FIELD_PRESETS[plan.presetKey].note;
+  fielders.forEach(f => { f.move = null; });
+}
+/* between balls: maybe change the field; returns a line to show, or null */
+function reviewField() {
+  const plan = planField();
+  const presetChanged = plan.presetKey !== captain.preset;
+  const namesChanged = !captain.names || plan.names.slice().sort().join() !== captain.names.slice().sort().join();
+  if (!presetChanged && !namesChanged) return null;
+  applyField(plan.names, false);
+  captain.preset = plan.presetKey; captain.names = plan.names;
+  const P = FIELD_PRESETS[plan.presetKey];
+  captain.label = P.label + (plan.moves.length ? ' +' : ''); captain.note = P.note;
+  if (presetChanged) return { main: 'Field change', sub: `${P.label} · ${P.note}${plan.moves.length ? ' · ' + plan.moves[0] : ''}` };
+  return { main: 'Field change', sub: 'Captain moves ' + plan.moves.join(', ') };
+}
+/* after each ball: remember where the runs went */
+function captainNotes(runs, wicket, endX, endZ) {
+  captain.heat = captain.heat.map(h => h * 0.9);
+  if (runs > 0 && endX != null) captain.heat[sectorOf(endX, endZ)] += runs >= 4 ? runs + 1 : runs;
+  captain.recent.push(runs); if (captain.recent.length > 6) captain.recent.shift();
+  if (wicket) captain.lastWicket = state.balls;
 }
 function faceTo(obj, x, z) { const dx = x - obj.position.x, dz = z - obj.position.z; if (dx * dx + dz * dz > 1e-4) obj.rotation.y = Math.atan2(-dx, -dz); }
 function turnTo(obj, x, z, k) {
@@ -656,7 +823,7 @@ function placeActors() {
   strikerA.root.position.set(striker.x, 0, STRIKER_Z); strikerA.root.rotation.y = 0;
   nonA.root.position.set(-0.95 * hand, 0, NON_Z); nonA.root.rotation.y = 0;
   if (phase === 'menu' || phase === 'over') { bowlerA.root.position.set(0.6, 0, -30); bowlerA.root.rotation.y = 0; }
-  fielders.forEach(f => { if (f.actor) f.actor.root.position.copy(f.home); });
+  fielders.forEach(f => { if (f.actor) f.actor.root.position.copy(f.pos); });
 }
 
 /* ---- bowler run-up path (position only; the clips do the limbs) ---- */
@@ -682,19 +849,12 @@ function driveBowler(t) {
 }
 
 /* ---- striker ---- */
-function shotClip(sw) {
-  if (sw.dir === 'block') return 'block';
-  const ds = sw.dir === 'left' ? -1 : sw.dir === 'right' ? 1 : 0;
-  const y = del ? del.hitPos.y : 0.6;
-  if (ds === 0) return sw.loft ? 'loft' : 'straight';
-  if (ds === -state.hand) return (y > 0.95 || sw.loft) ? 'pull' : 'leg';
-  return y > 0.95 ? 'cut' : 'off';
-}
-function playShot(sw) {
+function playShot(sw, refine) {
   if (!actorsReady) return;
-  sw.clip = shotClip(sw);
+  sw.clip = SHOTS[sw.shot].clip;
   sw.fast = true;
-  strikerA.play(sw.clip, { fade: 0.04, speed: CLIP_CONTACT / sw.cd, restart: true });
+  const speed = CLIP_CONTACT / sw.cd, from = refine ? Math.max(0, (gnow() - sw.wall) * speed) : 0;
+  strikerA.play(sw.clip, { fade: refine ? 0.03 : 0.04, speed, restart: true, from });
 }
 
 /* ---- running between the wickets ---- */
@@ -808,7 +968,7 @@ function driveEventFielder(now, th) {
   const a = f.actor, tEv = event.t;
   const target = _tmp.set(event.x, 0, event.z);
   if (f === bowlerFielder) bowlerFree = true;
-  const start = f === bowlerFielder ? bowlerA.root.position.clone() : f.home;
+  const start = f === bowlerFielder ? bowlerA.root.position.clone() : f.pos;
   if (!f._start) f._start = start.clone();
   const reachT = event.chase ? tEv + 1.0 : tEv;
   const u = clamp((th - f.react) / Math.max(0.05, reachT - f.react), 0, 1);
@@ -934,10 +1094,13 @@ function makeDelivery() {
   const r = Math.random();
   let lenName, len;
   if (type === 'pace') {
-    if (r < 0.08) { lenName = 'Yorker'; len = rand(1.1, 1.6); }
-    else if (r < 0.34) { lenName = 'Full'; len = rand(2.1, 3.4); }
-    else if (r < 0.76) { lenName = 'Good length'; len = rand(3.8, 6.2); }
-    else { lenName = 'Short'; len = rand(6.9, 8.8); }
+    // the captain's plan for the over shifts the lengths: a short-ball plan means bouncers
+    const mix = captain.plan === 'short' ? [0.04, 0.16, 0.38, 0.68] : [0.08, 0.32, 0.72, 0.9];
+    if (r < mix[0]) { lenName = 'Yorker'; len = rand(1.1, 1.6); }
+    else if (r < mix[1]) { lenName = 'Full'; len = rand(2.1, 3.4); }
+    else if (r < mix[2]) { lenName = 'Good length'; len = rand(3.8, 6.2); }
+    else if (r < mix[3]) { lenName = 'Short'; len = rand(6.9, 8.6); }
+    else { lenName = 'Bouncer'; len = rand(8.9, 10.6); }
   } else {
     if (r < 0.3) { lenName = 'Full'; len = rand(1.8, 3.0); }
     else if (r < 0.88) { lenName = 'Good length'; len = rand(3.2, 5.2); }
@@ -971,8 +1134,9 @@ function makeDelivery() {
     if (p.z > KEEP_Z - 0.35) break;
   }
   const path = { data: new Float32Array(data), n: data.length / 3, dt: DT };
-  const hit = crossZ(path, HIT_Z), stumps = crossZ(path, 0);
+  const hit = crossZ(path, HIT_Z), stumps = crossZ(path, 0), body = crossZ(path, STRIKER_Z);
   return {
+    bodyY: body ? body.y : null,
     type, kmh, lenName, len, path, bounceT, bouncePos,
     tHit: hit.t, hitPos: hit, tStumps: stumps ? stumps.t : 99, stumpsPos: stumps,
     tEnd: (path.n - 1) * DT,
@@ -983,14 +1147,60 @@ function makeDelivery() {
 /* ============================================================
    SHOT RESOLUTION
    ============================================================ */
-function shotName(dirSign, loft, y, defend) {
-  if (defend) return 'Forward defence';
-  const legSign = -state.hand;
-  if (dirSign === 0) return loft ? 'Lofted straight drive' : 'Straight drive';
-  if (dirSign !== legSign) { if (y > 0.95) return loft ? 'Upper cut' : 'Square cut'; return loft ? 'Lofted cover drive' : 'Cover drive'; }
-  if (y > 0.95) return loft ? 'Hook' : 'Pull';
-  return loft ? 'Lofted flick' : 'Flick';
+/* ---- the shot catalogue ----
+   az: direction the ball should go (deg; 0 = straight back past the bowler, + = off side, 180 = behind)
+   el: launch angle of the bat face (deg); speed: bat speed at the sweet spot (m/s, negative = soft hands)
+   bat: 'v' vertical bat (drives, glances) or 'h' horizontal (cuts, pulls, sweeps)
+   off / leg: how far from the bat line the batsman can reach the ball on each side (m)
+   lo / hi: ball heights at contact this shot is built for (m) */
+const SHOTS = {
+  straight:   { name: 'Straight drive',          clip: 'straight',   bat: 'v', az: 0,    el: -2,  speed: 21,   off: .42, leg: .38, lo: .05, hi: .95 },
+  loft:       { name: 'Lofted straight drive',   clip: 'loft',       bat: 'v', az: 0,    el: 31, speed: 23,   off: .40, leg: .36, lo: .10, hi: 1.0, aerial: true },
+  cover:      { name: 'Cover drive',             clip: 'off',        bat: 'v', az: 40,   el: -2,  speed: 21,   off: .62, leg: .25, lo: .05, hi: .95 },
+  loft_off:   { name: 'Lofted cover drive',      clip: 'loft_off',   bat: 'v', az: 42,   el: 29, speed: 22,   off: .62, leg: .25, lo: .10, hi: 1.0, aerial: true },
+  sq_drive:   { name: 'Square drive',            clip: 'sq_drive',   bat: 'v', az: 78,   el: -2,  speed: 20,   off: .72, leg: .18, lo: .10, hi: 1.0 },
+  late_cut:   { name: 'Late cut',                clip: 'late_cut',   bat: 'h', az: 138,  el: -5, speed: 12,   off: .80, leg: .05, lo: .35, hi: 1.35 },
+  punch:      { name: 'Back-foot punch',         clip: 'punch',      bat: 'v', az: 8,    el: -2,  speed: 18,   off: .50, leg: .30, lo: .65, hi: 1.45 },
+  punch_off:  { name: 'Back-foot drive',         clip: 'punch',      bat: 'v', az: 45,   el: -2,  speed: 18,   off: .62, leg: .25, lo: .65, hi: 1.45 },
+  cut:        { name: 'Square cut',              clip: 'cut',        bat: 'h', az: 92,   el: -4,  speed: 21,   off: .85, leg: .05, lo: .70, hi: 1.50 },
+  upper_cut:  { name: 'Upper cut',               clip: 'upper_cut',  bat: 'h', az: 140,  el: 25, speed: 19,   off: .85, leg: .05, lo: 1.0, hi: 1.95, aerial: true },
+  on_drive:   { name: 'On drive',                clip: 'on_drive',   bat: 'v', az: -28,  el: -2,  speed: 20,   off: .28, leg: .58, lo: .05, hi: .95 },
+  slog:       { name: 'Slog over midwicket',     clip: 'slog',       bat: 'h', az: -50,  el: 31, speed: 24,   off: .35, leg: .70, lo: .20, hi: 1.30, aerial: true },
+  flick:      { name: 'Flick',                   clip: 'leg',        bat: 'v', az: -68,  el: 0,  speed: 19,   off: .22, leg: .62, lo: .05, hi: 1.05 },
+  pull_front: { name: 'Pull',                    clip: 'pull',       bat: 'h', az: -50,  el: -3,  speed: 22,   off: .40, leg: .70, lo: .75, hi: 1.60 },
+  pull:       { name: 'Pull',                    clip: 'pull',       bat: 'h', az: -82,  el: -3,  speed: 22,   off: .40, leg: .70, lo: .75, hi: 1.60 },
+  hook:       { name: 'Hook',                    clip: 'hook',       bat: 'h', az: -100, el: 22, speed: 22,   off: .40, leg: .65, lo: 1.15, hi: 2.05, aerial: true },
+  hook_fine:  { name: 'Hook',                    clip: 'hook',       bat: 'h', az: -138, el: 20, speed: 20,   off: .40, leg: .65, lo: 1.15, hi: 2.05, aerial: true },
+  glance:     { name: 'Leg glance',              clip: 'glance',     bat: 'v', az: -150, el: -2,  speed: 8,   off: .12, leg: .60, lo: .10, hi: 1.20 },
+  glance_back:{ name: 'Glance off the hips',     clip: 'glance',     bat: 'v', az: -145, el: -1,  speed: 8,   off: .12, leg: .60, lo: .60, hi: 1.50 },
+  block:      { name: 'Forward defence',         clip: 'block',      bat: 'v', az: 0,    el: -12, speed: -2.5, off: .46, leg: .42, lo: 0,   hi: 1.20, defend: true },
+  back_def:   { name: 'Back-foot defence',       clip: 'back_def',   bat: 'v', az: 0,    el: -10, speed: -2.5, off: .46, leg: .42, lo: .50, hi: 1.70, defend: true },
+  sweep:      { name: 'Sweep',                   clip: 'sweep',      bat: 'h', az: -88,  el: 0,  speed: 18,   off: .55, leg: .70, lo: 0,   hi: .85 },
+  paddle:     { name: 'Paddle sweep',            clip: 'sweep',      bat: 'h', az: -155, el: 6,  speed: 7,    off: .40, leg: .70, lo: 0,   hi: .90 },
+  slog_sweep: { name: 'Slog sweep',              clip: 'slog_sweep', bat: 'h', az: -60,  el: 29, speed: 23,   off: .50, leg: .72, lo: 0,   hi: 1.0, aerial: true },
+  rev_sweep:  { name: 'Reverse sweep',           clip: 'rev_sweep',  bat: 'h', az: 105,  el: 0,  speed: 16,   off: .72, leg: .45, lo: 0,   hi: .85 },
+  scoop:      { name: 'Scoop over the keeper',   clip: 'scoop',      bat: 'v', az: 180,  el: 50, speed: 6,    off: .30, leg: .30, lo: .25, hi: 1.15, aerial: true },
+};
+
+/* choose the stroke from where you aimed and what the ball is doing */
+function isShortBall(d) { return d.hitPos.y > 0.95 || d.len > (d.type === 'pace' ? 6.6 : 5.6); }
+function pickShot(side, zone, family, loft) {
+  const y = del ? del.hitPos.y : 0.6, short = del ? isShortBall(del) : false, bouncer = y > 1.35;
+  if (family === 'scoop') return 'scoop';
+  if (family === 'reverse') return 'rev_sweep';
+  if (family === 'sweep') return side === 'O' ? 'rev_sweep' : loft ? 'slog_sweep' : zone === 3 ? 'paddle' : 'sweep';
+  if (side === 'B') return short ? 'back_def' : 'block';
+  if (side === 'S') return loft ? 'loft' : short ? 'punch' : 'straight';
+  if (side === 'O') {
+    if (zone === 1) return loft ? 'loft_off' : short ? 'punch_off' : 'cover';
+    if (zone === 2) return short ? (loft || bouncer ? 'upper_cut' : 'cut') : (loft ? 'loft_off' : 'sq_drive');
+    return short && (loft || bouncer) ? 'upper_cut' : 'late_cut';
+  }
+  if (zone === 1) return loft ? 'slog' : short ? 'pull_front' : 'on_drive';
+  if (zone === 2) return short ? (bouncer || loft ? 'hook' : 'pull') : (loft ? 'slog' : 'flick');
+  return short ? (bouncer ? 'hook_fine' : 'glance_back') : 'glance';
 }
+
 function timingLabel(err, W) {
   const a = Math.abs(err);
   if (a <= W) return 'Perfect';
@@ -1000,90 +1210,182 @@ function timingLabel(err, W) {
   return err < 0 ? 'Way too early' : 'Way too late';
 }
 
+/* ---- bat on ball ----
+   Impulse collision between the ball and the bat face. The bat has an effective mass that is highest
+   at the sweet spot; e is the coefficient of restitution; grip is how much of the ball's sliding
+   across the face friction removes (which is what puts spin on it). */
+const BAT_PHYS = { ballMass: 0.16, sweetMass: 0.62, grip: 0.3 };
+function gauss() { return (Math.random() + Math.random() + Math.random() - 1.5) * 0.8; }
+function dirVec(az, el) {
+  const a = az * DEG, e = el * DEG;
+  return new THREE.Vector3(state.hand * Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
+}
+function batCollision(vin, n, vBat, e, massRatio) {
+  const vrel = vin.clone().sub(vBat), vrn = vrel.dot(n);
+  const k = 1 / (1 + massRatio);
+  if (vrn >= 0) return { vout: vin.clone(), spin: new THREE.Vector3() };
+  const vt = vrel.clone().addScaledVector(n, -vrn);
+  const dvt = vt.multiplyScalar(-BAT_PHYS.grip * k);
+  const vout = vin.clone().addScaledVector(n, -(1 + e) * vrn * k).add(dvt);
+  const spin = n.clone().cross(dvt).multiplyScalar(-2.5 / BALL_R);     // Δω = -(5 / 2r) n × Δv_t
+  return { vout, spin };
+}
+/* find the face angle that sends a clean hit toward `dir` */
+function aimFace(vin, dir, vBatMag, e, massRatio, pathTilt) {
+  let n = dir.clone().multiplyScalar(Math.max(6, 1.17 * Math.abs(vBatMag) + 0.3 * vin.length())).sub(vin).normalize();
+  for (let i = 0; i < 14; i++) {
+    const { vout } = batCollision(vin, n, tiltPath(n, pathTilt).multiplyScalar(vBatMag), e, massRatio);
+    const miss = dir.clone().sub(vout.normalize());
+    if (miss.lengthSq() < 1e-5) break;
+    n.addScaledVector(miss, 0.45).normalize();
+  }
+  return n;
+}
+function rotateAbout(v, axis, ang) { return v.clone().applyAxisAngle(axis.clone().normalize(), ang); }
+/* horizontal axis across the face; tilting about it raises (+) or lowers (-) a direction */
+function horizAxis(n) { const h = new THREE.Vector3().crossVectors(n, new THREE.Vector3(0, 1, 0)); return h.lengthSq() > 1e-6 ? h.normalize() : new THREE.Vector3(1, 0, 0); }
+function tiltPath(n, tilt) { return n.clone().applyAxisAngle(horizAxis(n), tilt); }
+
 function resolveSwing() {
   const lv = LEVELS[state.level], W = lv.W, hand = state.hand;
   const err = swing.tc - del.tHit; swing.err = err; swing.resolved = true;
   showMeter(err, W);
   const aerr = Math.abs(err);
   if (aerr > 4.2 * W) { swing.outcome = 'whiff'; return; }
+  const S = SHOTS[swing.shot];
   const hp = del.hitPos;
-  const defend = swing.dir === 'block';
-  const dirSign = swing.dir === 'left' ? -1 : swing.dir === 'right' ? 1 : 0;
-  const legSign = -hand;
-  const batLine = hand * (STANCE_X + 0.3) + state.foot * FOOT_STEP;   // where the blade comes down, from the animation
-  const dx = hp.x - batLine, ad = Math.abs(dx);
-  const reach = defend ? 0.46 : dirSign === 0 ? 0.4 : (Math.sign(dx) === dirSign ? 0.62 : 0.3);
-  if (ad > reach) { swing.outcome = 'beaten'; return; }
-  if (hp.y > 1.9) { swing.outcome = 'over'; return; }
-  const edge = ad > reach * 0.74;
-  const topEdge = !edge && !defend && hp.y > 1.25 && dirSign !== legSign && !swing.loft;
-  const tier = aerr <= W ? 0 : aerr <= 2 * W ? 1 : aerr <= 3 * W ? 2 : 3;
-  const power = [1, 0.84, 0.62, 0.42][tier];
+  const batLine = hand * (STANCE_X + 0.3) + state.foot * FOOT_STEP;
+  const dx = (hp.x - batLine) * hand;                      // + = ball is on the off side of the bat
+  const reach = dx >= 0 ? S.off : S.leg;
+  if (Math.abs(dx) > reach) { swing.outcome = 'beaten'; return; }
+  if (hp.y > S.hi + 0.45) { swing.outcome = 'over'; return; }
 
-  let az, el, speed, kind;
-  if (defend) {
-    kind = 'defend'; speed = rand(5, 8) * (tier < 2 ? 1 : 1.35); el = -rand(4, 10); az = dirSign * 25 + rand(-12, 12);
-  } else if (edge) {
-    kind = 'edge'; speed = rand(14, 24); el = rand(-4, 22); az = Math.sign(dx || 1) * rand(118, 165);
-  } else if (topEdge) {
-    kind = 'topedge'; speed = rand(14, 20); el = rand(58, 74); az = rand(-170, 170);
-  } else {
-    kind = 'shot';
-    speed = 42 * power + rand(-1.5, 1.5);
-    if (hp.y < 0.12 && tier > 0) speed *= 0.5;
-    // drives go into the gaps (mid-off/cover, mid-on/midwicket); cuts and pulls go square
-    az = dirSign * (hp.y > 0.95 ? 80 : 42) + clamp(err * 420, -40, 40) * hand + rand(-9, 9);
-    if (swing.loft) el = tier === 0 ? rand(30, 36) : tier === 1 ? rand(32, 40) : rand(40, 56);
-    else { el = hp.y > 0.9 ? rand(0, 7) : rand(-5, 2); }
-  }
-  const a = az * DEG, e = el * DEG;
-  const v = { x: Math.sin(a) * Math.cos(e) * speed, y: Math.sin(e) * speed, z: -Math.cos(a) * Math.cos(e) * speed };
+  // where on the bat the ball lands: across the face (w, edges at |w| > 0.72) and along it (s, sweet spot at 0)
+  const comfort = 0.55 * reach;
+  const lateral = Math.sign(dx) * Math.max(0, Math.abs(dx) - comfort) / (reach - comfort);
+  const heightMiss = hp.y - clamp(hp.y, S.lo, S.hi);
+  let w, s;
+  if (S.bat === 'v') { w = lateral + gauss() * 0.12; s = heightMiss / 0.22 + gauss() * 0.15 + (aerr / W) * 0.1 * Math.sign(heightMiss || 1); }
+  else { w = heightMiss / 0.12 + gauss() * 0.2; s = Math.abs(lateral) * 0.9 + (err / W) * 0.22 + gauss() * 0.12; }
+  if (Math.abs(w) > 1) { swing.outcome = hp.y > S.hi ? 'over' : 'beaten'; return; }
+  const edge = Math.abs(w) > 0.72;
+  let q = clamp(1 - 0.85 * Math.abs(s), 0.15, 1) * (1 - 0.3 * Math.min(Math.abs(w), 0.72));
+
+  // timing turns the face and changes the bat speed
+  const tier = aerr <= W ? 0 : aerr <= 2 * W ? 1 : aerr <= 3 * W ? 2 : 3;
+  const speedK = 1 - 0.45 * clamp((aerr - W) / (3 * W), 0, 1);
+  const az = S.az + clamp((err / W) * 9, -40, 40) + gauss() * 4;               // early closes the face (to leg), late opens it
+  let el = S.el + (swing.loft && !S.aerial && !S.defend ? 18 : 0);
+  if (S.bat === 'v' && !S.defend) el += clamp((err / W) * 2.5, -8, 8);        // late: bat already rising
+  const dir = dirVec(az, el);
+
+  // incoming ball
   const tLaunch = clamp(swing.tc, del.tHit - 0.035, del.tHit + 0.06);
   const lp = samplePath(del.path, tLaunch, new THREE.Vector3());
+  const vin = samplePath(del.path, tLaunch + 0.004, new THREE.Vector3()).sub(samplePath(del.path, tLaunch - 0.004, new THREE.Vector3())).divideScalar(0.008);
   lp.z = Math.min(lp.z, -0.4);
 
+  const massRatio = BAT_PHYS.ballMass / (BAT_PHYS.sweetMass * q + 0.12);
+  const e = S.defend ? 0.38 : 0.16 + 0.36 * q;
+  const vBat = S.speed * speedK * (swing.power || 1);
+  const pathTilt = S.defend ? 0 : (S.aerial || swing.loft ? -0.12 : 0.06);   // lofted: bat path under the face -> backspin
+  let n = aimFace(vin, dir, vBat, 0.52, BAT_PHYS.ballMass / (BAT_PHYS.sweetMass + 0.12), pathTilt);
+
+  // edges: the ball meets the side of the blade, so the contact normal swings round toward that edge
+  let kind = S.defend ? 'defend' : 'shot', edgeName = '';
+  const batAxis = S.bat === 'v' ? new THREE.Vector3(0, 1, 0) : horizAxis(n);
+  const vBatVec = tiltPath(n, pathTilt).multiplyScalar(vBat);                 // the bat keeps swinging the way the face points
+  if (edge) {
+    const beta = lerp(50, 82, clamp((Math.abs(w) - 0.72) / 0.28, 0, 1)) * DEG;
+    let side = S.bat === 'v' ? new THREE.Vector3(Math.sign(w) * hand, 0, 0) : new THREE.Vector3(0, Math.sign(w), 0);
+    side.addScaledVector(n, -side.dot(n)).normalize();
+    n = n.clone().multiplyScalar(Math.cos(beta)).addScaledVector(side, Math.sin(beta)).normalize();
+    kind = S.bat === 'v' ? 'edge' : (w > 0 ? 'topedge' : 'edge');
+    edgeName = S.bat === 'v' ? (w > 0 ? 'Outside edge' : 'Inside edge') : (w > 0 ? 'Top edge' : 'Bottom edge');
+    q *= 0.55;
+  } else if (Math.abs(w) > 0.3) {
+    n = rotateAbout(n, batAxis, w * 10 * DEG * -hand);                         // off-centre: the bat twists in the hands
+  }
+  if (!edge && q < 0.45) kind = 'mishit';
+
+  const hit = batCollision(vin, n, vBatVec, edge ? 0.3 : e, massRatio);
+
   swing.outcome = 'contact';
-  swing.kind = kind; swing.tier = tier;
-  swing.name = kind === 'edge' ? 'Outside edge' : kind === 'topedge' ? 'Top edge' : shotName(dirSign, swing.loft, hp.y, defend);
-  hitPath = simulateHit({ x: lp.x, y: lp.y, z: lp.z }, v);
-  event = findEvent(hitPath, kind);
+  swing.kind = kind; swing.tier = tier; swing.q = q; swing.exit = hit.vout.length();
+  swing.name = edgeName || (kind === 'mishit' ? `${S.name} · ${s > 0 ? 'off the splice' : 'off the toe'}` : S.name);
+  hitPath = simulateHit({ x: lp.x, y: lp.y, z: lp.z }, { x: hit.vout.x, y: hit.vout.y, z: hit.vout.z }, hit.spin);
+  const on = playedOn(hitPath);
+  event = on || findEvent(hitPath, kind === 'defend' ? 'defend' : kind);
   eventApplied = false;
   phase = 'hit'; hitWall = gnow();
-  impactFlash(lp, kind === 'shot' ? 0.6 + power * 0.8 : 0.5);
-  if (kind === 'shot' && tier === 0) { hitStop(70, 420, 0.3); fx.shake = 0.06; }
-  else if (kind === 'shot' && tier === 1) { hitStop(40, 0, 1); fx.shake = 0.035; }
+  const power = clamp(swing.exit / 42, 0.2, 1.2);
+  impactFlash(lp, kind === 'shot' ? 0.5 + power * 0.8 : 0.5);
+  if (kind === 'shot' && tier === 0 && q > 0.8) { hitStop(70, 420, 0.3); fx.shake = 0.06; }
+  else if (kind === 'shot' && tier <= 1) { hitStop(40, 0, 1); fx.shake = 0.035; }
   else fx.shake = 0.02;
   if ((event.type === 'field' || event.type === 'drop') && event.runs > 0) planRuns(event.runs, hitWall + 0.35, event.t);
-  sound.tock(kind === 'edge' || kind === 'topedge' ? 0.5 : kind === 'defend' ? 0.4 : 0.6 + 0.4 * power);
+  sound.tock(kind === 'edge' || kind === 'topedge' ? 0.45 : kind === 'defend' ? 0.4 : kind === 'mishit' ? 0.5 : 0.55 + 0.45 * power);
 }
 
-/* ball after it leaves the bat */
-function simulateHit(p, v) {
-  const data = [], k = 0.0065;
-  let bounced = false, boundaryIdx = -1, boundaryAir = false, landIdx = -1, landPos = null;
-  for (let i = 0; i < 1400; i++) {
+/* an inside or bottom edge that goes on to hit the stumps */
+function playedOn(path) {
+  const d = path.data, S = 0.1143 + BALL_R;
+  for (let i = 1; i < path.n && i * path.dt < 0.6; i++) {
+    const z0 = d[i * 3 - 1], z1 = d[i * 3 + 2];
+    if (z0 < 0 && z1 >= 0) {
+      const u = -z0 / (z1 - z0), x = lerp(d[i * 3 - 3], d[i * 3], u), y = lerp(d[i * 3 - 2], d[i * 3 + 1], u);
+      if (Math.abs(x) < S && y < 0.71 + BALL_R) return { type: 'playedon', t: i * path.dt, x, y, z: 0, f: null };
+      return null;
+    }
+  }
+  return null;
+}
+
+/* ball after it leaves the bat: drag, Magnus lift from spin, spin-aware bounces, rolling on grass */
+const MAGNUS = 3.2e-4, SPIN_DECAY = 0.3, GRASS_E = 0.4, GRASS_MU = 0.35;
+function simulateHit(p, v, spin) {
+  const data = [], k = 0.0065, r = BALL_R, dt = DT_HIT;
+  const w = spin ? { x: spin.x, y: spin.y, z: spin.z } : { x: 0, y: 0, z: 0 };
+  let bounced = false, boundaryIdx = -1, boundaryAir = false, landIdx = -1, landPos = null, rolling = false;
+  for (let i = 0; i < 1800; i++) {
     data.push(p.x, p.y, p.z);
-    const r = Math.hypot(p.x, p.z - PITCH_C);
-    if (r > BOUNDARY_R && boundaryIdx < 0) { boundaryIdx = i; boundaryAir = !bounced; if (bounced) break; }
+    const rr = Math.hypot(p.x, p.z - PITCH_C);
+    if (rr > BOUNDARY_R && boundaryIdx < 0) { boundaryIdx = i; boundaryAir = !bounced; if (bounced) break; }
     if (boundaryIdx >= 0 && landIdx >= 0) break;
     const sp = Math.hypot(v.x, v.y, v.z);
-    if (p.y > BALL_R + 0.001 || v.y > 0.01) {
-      v.x -= k * sp * v.x * DT_HIT; v.y -= (G + k * sp * v.y) * DT_HIT; v.z -= k * sp * v.z * DT_HIT;
+    if (!rolling) {
+      // gravity, drag and Magnus (ω × v)
+      const mx = w.y * v.z - w.z * v.y, my = w.z * v.x - w.x * v.z, mz = w.x * v.y - w.y * v.x;
+      v.x += (-k * sp * v.x + MAGNUS * mx) * dt;
+      v.y += (-G - k * sp * v.y + MAGNUS * my) * dt;
+      v.z += (-k * sp * v.z + MAGNUS * mz) * dt;
+      const decay = Math.exp(-SPIN_DECAY * dt); w.x *= decay; w.y *= decay; w.z *= decay;
     } else {
       const hs = Math.hypot(v.x, v.z);
-      if (hs < 0.35) break;
-      const s = Math.max(0, hs - 3.0 * DT_HIT) / hs; v.x *= s; v.z *= s; v.y = 0;
+      if (hs < 0.3) break;
+      const s = Math.max(0, hs - (2.0 + 0.1 * hs) * dt) / hs;            // grass: firmer drag the faster it runs
+      v.x *= s; v.z *= s; v.y = 0;
     }
-    p.x += v.x * DT_HIT; p.y += v.y * DT_HIT; p.z += v.z * DT_HIT;
-    if (p.y < BALL_R) {
-      p.y = BALL_R;
+    p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
+    if (p.y < r && !rolling) {
+      p.y = r;
       if (v.y < 0) {
         if (!bounced) { bounced = true; landIdx = i + 1; landPos = { x: p.x, z: p.z }; }
-        if (-v.y > 1.2) { v.y = -v.y * 0.36; v.x *= 0.72; v.z *= 0.72; } else v.y = 0;
+        const vn = -v.y;
+        // friction at the contact point pushes the ball toward rolling; topspin kicks on, backspin checks
+        const ux = v.x + r * w.z, uz = v.z - r * w.x, u = Math.hypot(ux, uz);
+        if (u > 1e-6) {
+          const j = Math.min(GRASS_MU * (1 + GRASS_E) * vn, (2 / 7) * u);
+          const dvx = -j * ux / u, dvz = -j * uz / u;
+          v.x += dvx; v.z += dvz;
+          w.x += (2.5 / r) * -dvz; w.z += (2.5 / r) * dvx;
+        }
+        v.x *= 0.93; v.z *= 0.93;
+        if (vn > 1.1) v.y = GRASS_E * vn; else { v.y = 0; rolling = true; }
       }
     }
   }
-  return { data: new Float32Array(data), n: data.length / 3, dt: DT_HIT, boundaryIdx, boundaryAir, landIdx, landPos };
+  return { data: new Float32Array(data), n: data.length / 3, dt, boundaryIdx, boundaryAir, landIdx, landPos };
 }
 
 /* who gets to the ball first, and how */
@@ -1098,17 +1400,17 @@ function findEvent(path, kind) {
     const airborne = path.landIdx < 0 || i < path.landIdx;
     for (const f of fielders) {
       if (actorsReady && !f.actor) continue;
-      const dist = Math.hypot(x - f.home.x, z - f.home.z);
+      const dist = Math.hypot(x - f.pos.x, z - f.pos.z);
       let need, type;
       if (airborne) { if (y < 0.2 || y > f.catchH) continue; need = f.react + Math.max(0, dist - f.catchReach * (1 - 0.35 * hard)) / f.speed; type = 'catch'; }
       else { if (y > 0.75) continue; need = f.react + Math.max(0, dist - f.groundReach * (1 - 0.55 * hard)) / (f.speed * (1 - 0.2 * hard)); type = 'field'; }
-      if (need <= t) { const slack = t - need; if (!best || slack > best.slack) best = { type, f, i, t, slack, x, y, z }; }
+      if (need <= t) { const slack = t - need; if (!best || slack > best.slack) best = { type, f, i, t, slack, x, y, z, hs: Math.hypot(hs, (y - d[i * 3 - 2]) / dt) }; }
     }
   }
   if (!best && path.boundaryIdx >= 0) {
     const i = path.boundaryIdx, x = d[i * 3], z = d[i * 3 + 2];
     let chaser = null, bn = 1e9;
-    fielders.forEach(f => { if (f.hidden || f.role === 'keeper' || (actorsReady && !f.actor)) return; const n = Math.hypot(x - f.home.x, z - f.home.z); if (n < bn) { bn = n; chaser = f; } });
+    fielders.forEach(f => { if (f.hidden || f.role === 'keeper' || (actorsReady && !f.actor)) return; const n = Math.hypot(x - f.pos.x, z - f.pos.z); if (n < bn) { bn = n; chaser = f; } });
     best = { type: path.boundaryAir ? 'six' : 'four', f: chaser, i, t: i * dt, x, z, chase: true };
   }
   if (!best) {
@@ -1116,14 +1418,20 @@ function findEvent(path, kind) {
     let bt = 1e9;
     fielders.forEach(f => {
       if (actorsReady && !f.actor) return;
-      const need = f.react + Math.max(0, Math.hypot(x - f.home.x, z - f.home.z) - f.groundReach) / f.speed;
+      const need = f.react + Math.max(0, Math.hypot(x - f.pos.x, z - f.pos.z) - f.groundReach) / f.speed;
       const tt = Math.max(te, need); if (tt < bt) { bt = tt; best = { type: 'field', f, i, t: tt, x, z }; }
     });
   }
-  if (best.type === 'catch' && best.slack < 0.12 && Math.random() < 0.35) best.type = 'drop';
+  if (best.type === 'catch') {
+    // how hard is the chance? little time and a fast ball is a reflex catch; a skier gives time to settle
+    const sharp = clamp((best.hs - 18) / 16, 0, 1) * clamp((1.1 - best.t) / 0.6, 0, 1);
+    const base = best.f.cls === 'close' || best.f.role === 'keeper' ? 0.93 : best.f === bowlerFielder ? 0.85 : 0.95;
+    const held = base * (1 - (best.f === bowlerFielder ? 0.7 : best.f.cls === 'close' ? 0.5 : 0.6) * sharp) * (best.slack < 0.1 ? 0.8 : 1);
+    if (window.__forceDrop || Math.random() > held) best.type = 'drop';
+  }
   if (best.type === 'field' || best.type === 'drop') {
     const throwD = Math.min(Math.hypot(best.x, best.z), Math.hypot(best.x, best.z - FAR_Z));
-    const moved = best.f ? Math.hypot(best.x - best.f.home.x, best.z - best.f.home.z) : 0;
+    const moved = best.f ? Math.hypot(best.x - best.f.pos.x, best.z - best.f.pos.z) : 0;
     const total = best.t + throwD / 28 + 0.55 + (moved > 4 ? 0.7 : 0);     // a fielder on the move gives time to run
     let runs = total < 2.8 ? 0 : Math.min(3, 1 + Math.floor((total - 2.8) / 2.6));
     if (kind === 'defend' && Math.hypot(best.x, best.z - BAT_Z) < 12) runs = 0;
@@ -1138,17 +1446,40 @@ function findEvent(path, kind) {
    ============================================================ */
 const input = { loftHeld: false, loftToggle: false, get loft() { return this.loftHeld || this.loftToggle; } };
 
-function requestShot(dir, opts) {
+/* direction codes are screen-relative: up, down, left, right, upleft, upright, downleft, downright.
+   up = straight, down = block, a side = square, up+side = drive, down+side = fine (behind square). */
+function toBatter(code) {
+  code = code === 'straight' ? 'up' : code === 'block' ? 'down' : code;
+  const h = code.includes('left') ? 'left' : code.includes('right') ? 'right' : '';
+  if (!h) return code === 'down' ? { side: 'B', zone: 0 } : { side: 'S', zone: 0 };
+  const side = (h === 'right') === (state.hand > 0) ? 'O' : 'L';
+  return { side, zone: code.startsWith('up') ? 1 : code.startsWith('down') ? 3 : 2 };
+}
+function requestShot(code, opts) {
   opts = opts || {};
   if (phase !== 'delivery' || swing) return false;
   const now = gnow();
   const td = now - relWall;
   const cd = opts.contactDelay != null ? opts.contactDelay : CONTACT_DELAY;
-  const loft = dir !== 'block' && (opts.loft || input.loft);
-  swing = { td, tc: td + cd, cd: Math.max(0.03, cd), dir, loft, resolved: false, wall: now, source: opts.source || 'keys' };
-  const dirSign = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
-  swing.yaw = -dirSign * 0.7 * state.hand;
+  const { side, zone } = toBatter(code);
+  const family = opts.family || null;
+  const loft = side !== 'B' && !!(opts.loft || input.loft);
+  swing = { td, tc: td + cd, cd: Math.max(0.03, cd), code, side, zone, family, loft, resolved: false, wall: now,
+            real: performance.now(), source: opts.source || 'keys', power: opts.power || 1 };
+  swing.shot = pickShot(side, zone, family, loft);
+  swing.dir = side === 'B' ? 'block' : 'shot';
   playShot(swing);
+  return true;
+}
+/* a second key pressed a moment after the first turns the shot into a diagonal */
+function refineShot(code, family) {
+  if (!swing || swing.resolved || performance.now() - swing.real > CHORD_MS) return false;
+  const { side, zone } = toBatter(code);
+  swing.code = code; swing.side = side; swing.zone = zone;
+  if (family) swing.family = family;
+  swing.loft = side !== 'B' && (swing.loft || input.loft);
+  const next = pickShot(side, zone, swing.family, swing.loft);
+  if (next !== swing.shot) { swing.shot = next; swing.dir = side === 'B' ? 'block' : 'shot'; playShot(swing, true); }
   return true;
 }
 function canStep() { return phase === 'runup' || (phase === 'delivery' && !swing); }
@@ -1163,14 +1494,38 @@ function setGuard(f) {
   updateChips();
 }
 
-const SHOT_KEYS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'straight', Space: 'straight', KeyW: 'straight', ArrowDown: 'block', KeyS: 'block' };
+const CHORD_MS = 75;
+const ARROWS = { ArrowUp: 'u', KeyW: 'u', Space: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', ArrowRight: 'r' };
+const FAMILY_KEYS = { KeyQ: 'sweep', KeyE: 'reverse', KeyR: 'scoop' };
+let chord = { keys: new Set(), t: -1e9, family: null };
+function chordCode(keys, family) {
+  const u = keys.has('u'), d = keys.has('d'), l = keys.has('l'), r = keys.has('r');
+  const h = l && !r ? 'left' : r && !l ? 'right' : '';
+  const v = u && !d ? 'up' : d && !u ? 'down' : '';
+  if (v && h) return v + h;
+  if (h || v) return h || v;
+  // a sweep key on its own: sweep to the leg side, reverse sweep to the off side, scoop straight
+  const legScreen = state.hand > 0 ? 'left' : 'right', offScreen = state.hand > 0 ? 'right' : 'left';
+  return family === 'reverse' ? offScreen : family === 'scoop' ? 'up' : legScreen;
+}
+function shotKey(part, family) {
+  const t = performance.now();
+  if (t - chord.t > CHORD_MS) chord = { keys: new Set(), t, family: null };
+  if (part) chord.keys.add(part);
+  if (family) chord.family = family;
+  const code = chordCode(chord.keys, chord.family);
+  if (swing && swing.chordT === chord.t) refineShot(code, chord.family);
+  else if (requestShot(code, { family: chord.family })) swing.chordT = chord.t;
+}
 window.addEventListener('keydown', e => {
   if (e.key === 'Shift') { input.loftHeld = true; updateChips(); }
   if (phase === 'menu' || phase === 'over') return;
-  if (SHOT_KEYS[e.code]) { e.preventDefault(); if (!e.repeat) requestShot(SHOT_KEYS[e.code]); }
+  if (ARROWS[e.code]) { e.preventDefault(); if (!e.repeat) shotKey(ARROWS[e.code], null); }
+  else if (FAMILY_KEYS[e.code]) { e.preventDefault(); if (!e.repeat) shotKey(null, FAMILY_KEYS[e.code]); }
   else if (e.code === 'KeyA') { e.preventDefault(); if (!e.repeat) requestStep(-1); }
   else if (e.code === 'KeyD') { e.preventDefault(); if (!e.repeat) requestStep(1); }
   else if (e.code === 'KeyC') { cam.recentre(); }
+  else if (e.code === 'KeyM') { toggleFieldMap(); }
   else if (e.code === 'Escape') openMenu(true);
 });
 window.addEventListener('keyup', e => { if (e.key === 'Shift') { input.loftHeld = false; updateChips(); } });
@@ -1180,8 +1535,8 @@ $('pad').addEventListener('pointerdown', e => {
   const b = e.target.closest('button'); if (!b) return;
   e.preventDefault(); sound.unlock();
   if (b.dataset.shot) requestShot(b.dataset.shot);
+  else if (b.dataset.family) requestShot(chordCode(new Set(), b.dataset.family), { family: b.dataset.family });
   else if (b.dataset.step) requestStep(+b.dataset.step);
-  else if (b.dataset.act === 'block') requestShot('block');
   else if (b.dataset.act === 'loft') { input.loftToggle = !input.loftToggle; updateChips(); }
 });
 
@@ -1376,11 +1731,16 @@ const cam = (() => {
 
     if (ref && t > cooldownUntil) {
       const ax = Math.abs(vx), ay = Math.abs(vy);
-      if (growth > lerp(4.2, 1.8, (cfg.sens - 1) / 9) && speed < thr * 0.9) fire('block', false, t);
+      if (growth > lerp(4.2, 1.8, (cfg.sens - 1) / 9) && speed < thr * 0.9) fire('down', false, t, 1);
       else if (speed > thr) {
-        if (ax > ay * 1.1) fire(vx < 0 ? 'left' : 'right', vy < -0.45 * ax, t);
-        else if (vy > 0) fire('straight', false, t);
-        // mostly-upward movement is your backlift: ignored
+        const ang = Math.atan2(vy, vx) / DEG, power = clamp(speed / thr, 1, 2);   // screen y points down
+        const side = Math.abs(ang) > 90 ? 'left' : 'right', a = Math.abs(ang) > 90 ? 180 - Math.abs(ang) : Math.abs(ang);
+        if (ang >= 0) {                      // bat coming down
+          if (a < 30) fire(side, false, t, power);                 // flat swipe: square
+          else if (a < 70) fire('up' + side, false, t, power);     // down and across: drive to that side
+          else fire('up', false, t, power);                        // straight down: straight drive
+        } else if (a < 70) fire(side, true, t, power);            // rising swipe: hit it in the air
+        // straight up is your backlift: ignored
       }
     }
     if (speed < thr * 0.35) {
@@ -1389,11 +1749,10 @@ const cam = (() => {
     }
     updateStatus();
   }
-  function fire(dir, loft, t) {
-    const ok = requestShot(dir, { loft, contactDelay: 0.03 - cfg.lag, source: 'camera' });
+  function fire(dir, loft, t, power) {
+    const ok = requestShot(dir, { loft, contactDelay: 0.03 - cfg.lag, source: 'camera', power: 0.94 + 0.08 * (power - 1) });
     cooldownUntil = t + (ok ? 0.85 : 0.35);
-    const names = { left: 'Left', right: 'Right', straight: 'Straight', block: 'Block' };
-    flash = { text: (names[dir] || dir) + (loft ? ' · air' : ''), t, ok };
+    flash = { text: ok && swing ? SHOTS[swing.shot].name : ({ up: 'Straight', down: 'Block' }[dir] || dir.replace('up', 'drive ')) + (loft ? ' · air' : ''), t, ok };
   }
   function recentre() { if (cur && !lost) center = { x: cur.x, y: cur.y, size: cur.size }; }
 
@@ -1508,6 +1867,45 @@ function callout(main, sub, cls) {
   c.className = 'callout pop ' + (cls || '');
   $('callout-main').textContent = main || ''; $('callout-sub').textContent = sub || '';
 }
+/* ---- field map: top-down, bowler at the top like the camera ---- */
+const fm = { el: $('fieldmap'), wrap: $('fieldmap-wrap'), shown: true, lastShot: null, frame: 0 };
+try { fm.shown = localStorage.getItem('ac-fieldmap') !== 'off'; } catch (_) {}
+fm.wrap.classList.toggle('min', !fm.shown);
+function toggleFieldMap() {
+  fm.shown = !fm.shown; fm.wrap.classList.toggle('min', !fm.shown);
+  try { localStorage.setItem('ac-fieldmap', fm.shown ? 'on' : 'off'); } catch (_) {}
+}
+fm.wrap.addEventListener('click', e => { e.currentTarget.blur(); toggleFieldMap(); });
+function drawFieldMap() {
+  $('fm-name').textContent = captain.label || 'Field';
+  if (!fm.shown) return;
+  const c = fm.el, css = c.clientWidth || 120, dpr = Math.min(2, window.devicePixelRatio || 1), px = Math.round(css * dpr);
+  if (c.width !== px) { c.width = px; c.height = px; }
+  const g = c.getContext('2d'), R = px / 2 - 2 * dpr, sc = R / (BOUNDARY_R + 1);
+  const X = x => px / 2 + x * sc, Y = z => px / 2 + (z - PITCH_C) * sc;
+  g.clearRect(0, 0, px, px);
+  g.fillStyle = '#1f5a2c'; g.beginPath(); g.arc(px / 2, px / 2, R, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(244,241,230,.85)'; g.lineWidth = 1.2 * dpr; g.stroke();
+  // 30-yard circle
+  g.setLineDash([2 * dpr, 2.5 * dpr]); g.strokeStyle = 'rgba(244,241,230,.55)'; g.lineWidth = dpr;
+  g.beginPath(); g.arc(X(0), Y(0), RING_R * sc, 0, Math.PI); g.lineTo(X(-RING_R), Y(FAR_Z)); g.arc(X(0), Y(FAR_Z), RING_R * sc, Math.PI, 0); g.closePath(); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = '#c9ae72'; g.fillRect(X(-1.5), Y(FAR_Z - 1.2), 3 * sc, (Math.abs(FAR_Z) + 2.4) * sc);
+  // the last shot
+  if (fm.lastShot) {
+    g.strokeStyle = 'rgba(255,182,39,.8)'; g.lineWidth = 1.4 * dpr; g.beginPath();
+    g.moveTo(X(fm.lastShot[0]), Y(fm.lastShot[1])); g.lineTo(X(fm.lastShot[2]), Y(fm.lastShot[3])); g.stroke();
+  }
+  const dot = (x, z, fill, r) => { g.fillStyle = fill; g.beginPath(); g.arc(X(x), Y(z), r * dpr, 0, Math.PI * 2); g.fill(); };
+  fielders.forEach(f => {
+    const p = f.actor ? f.actor.root.position : f.pos;
+    if (f === bowlerFielder && !actorsReady) return;
+    dot(p.x, p.z, f === keeper ? '#dfe8ff' : '#6f9bff', 2.6);
+  });
+  if (actorsReady) { dot(strikerA.root.position.x, strikerA.root.position.z, '#ffb627', 2.4); dot(nonA.root.position.x, nonA.root.position.z, '#ffb627', 2.4); }
+  if (phase === 'hit' || phase === 'post') dot(ballPos.x, ballPos.z, '#ffffff', 2);
+}
+
 function clearCallout() { $('callout').className = 'callout'; $('callout-main').textContent = ''; $('callout-sub').textContent = ''; }
 const METER_RANGE = 0.16;
 function layoutMeter(W) {
@@ -1533,7 +1931,9 @@ function readSettings() {
 }
 function startInnings() {
   readSettings();
-  Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], foot: 0, over: -1 });
+  Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], foot: 0, over: 0, bowlerType: 'pace' });
+  state.spinTurn = Math.random() < 0.5 ? 1 : -1;
+  captain.plan = Math.random() < 0.25 ? 'short' : 'normal';
   placeField();
   placeActors();
   layoutMeter(LEVELS[state.level].W);
@@ -1547,17 +1947,22 @@ function startInnings() {
 }
 function nextBall() {
   const overIdx = Math.floor(state.balls / 6);
+  let newOver = false;
   if (overIdx !== state.over) {
     state.over = overIdx; state.strip = [];
     state.bowlerType = overIdx % 2 ? 'spin' : 'pace';
     state.spinTurn = Math.random() < 0.5 ? 1 : -1;
+    captain.plan = state.bowlerType === 'pace' && Math.random() < 0.35 ? 'short' : 'normal';
+    newOver = true;
   }
   phase = 'runup'; runupT = 0; swing = null; hitPath = null; event = null; deadInfo = null;
   bowledChecked = false; bouncedShown = false; keeperHold = false; padHit = false; lastTd = 0;
   state.foot = 0;
   resetStumps(nearStumps); bounceMark.visible = false; bounceMark.material.opacity = 0.85; clearTrail();
-  fielders.forEach(f => f.pos.copy(f.home));
-  resetFielderEvent(); eventApplied = false;
+  resetFielderEvent(); eventApplied = false; fm.lastShotSet = false;
+  const change = state.balls === 0 && !newOver ? null : reviewField();
+  const travel = beginSetField();
+  if (change || travel > 0.6) { phase = 'setfield'; setT = 0; setDur = Math.max(travel, change ? 1.6 : 0) + 0.3; }
   if (actorsReady) {
     placeActors();
     strikerA.play('stance', { loop: true, fade: 0.3 });
@@ -1569,6 +1974,8 @@ function nextBall() {
   $('gun-v').innerHTML = '— <small>km/h</small>'; $('gun-len').textContent = 'Running in';
   $('meter').classList.add('dim'); $('needle').hidden = true; $('meter-label').textContent = 'Timing';
   if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
+  else if (change) callout(change.main, change.sub, 'c-quiet');
+  else if (newOver && captain.plan === 'short') callout('Short-ball plan', 'Expect bouncers this over', 'c-quiet');
   else clearCallout();
   updateHUD(); updateChips();
 }
@@ -1583,6 +1990,8 @@ function finishBall(runs, wicket, headline, sub, cls) {
   if (!wicket && runs === 0) state.dots++;
   state.strip.push(wicket ? 'W' : runs);
   state.over1Hint = false;
+  const endAt = event && event.x != null && event.type !== 'body' ? event : null;
+  captainNotes(runs, wicket, endAt ? endAt.x : null, endAt ? endAt.z : null);
   callout(headline, sub, cls);
   showDeliveryInfo();
   updateHUD();
@@ -1731,10 +2140,16 @@ function updateStriker(now, dt) {
   }
   if (runPlan && now >= runPlan.start) return;
   if (phase === 'runup' && runupT > RUNUP - 0.5 && strikerA.name === 'stance') strikerA.play('backlift', { fade: 0.15 });
-  if (phase === 'delivery' && !swing && del && now - relWall > del.tHit - 0.02 && strikerA.name === 'backlift') strikerA.play('leave', { fade: 0.12 });
+  if (phase === 'delivery' && !swing && del && strikerA.name === 'backlift') {
+    const atBody = del.bodyY != null ? del.bodyY : del.hitPos.y;
+    if (atBody > 1.3 && now - relWall > del.tHit - 0.24) strikerA.play('duck', { fade: 0.08, speed: 1.3 });      // get under the bouncer
+    else if (now - relWall > del.tHit - 0.02) strikerA.play('leave', { fade: 0.12 });
+  }
   if ((phase === 'post' || phase === 'hit') && strikerA.name !== 'stance' && strikerA.name !== 'run' && strikerA.done) strikerA.play('stance', { loop: true, fade: 0.35 });
 }
 
+const WALK_IN = 2.2;
+const _mv = new THREE.Vector3();
 function driveFielders(now, dt) {
   const th = phase === 'hit' || phase === 'post' ? now - hitWall : 0;
   fielders.forEach(f => {
@@ -1743,12 +2158,48 @@ function driveFielders(now, dt) {
     const alert = phase === 'delivery' || (phase === 'runup' && runupT > 0.7);
     if (f === keeper) {
       if (phase === 'delivery' && del && del.keepAt) f.pos.x = lerp(f.pos.x, del.keepAt.x, 1 - Math.exp(-dt * 4));
+      if (phase === 'setfield' || phase === 'runup') f.pos.lerp(f.home, 1 - Math.exp(-dt * 3));
       a.root.position.copy(f.pos);
       a.root.rotation.y = 0;
       if (keeperHold) { if (f.anim !== 'gather') { a.play('gather', { fade: 0.08 }); f.anim = 'gather'; } return; }
       const want = alert ? 'keep' : phase === 'hit' ? 'ready' : 'idle';
       if (f.anim !== want) { a.play(want, { loop: want !== 'gather', fade: 0.3, from: want === 'keep' ? 0 : Math.random() }); f.anim = want; }
       return;
+    }
+    // jogging to a new spot after a field change, or back after chasing the ball
+    if (f.move) {
+      const m = f.move; m.t += dt; const u = clamp(m.t / m.dur, 0, 1);
+      f.pos.copy(m.from).lerp(f.home, smooth(u));
+      a.root.position.copy(f.pos);
+      if (u < 1) {
+        turnTo(a.root, f.home.x, f.home.z, 0.25);
+        if (f.anim !== 'jog') { a.play('run', { loop: true, fade: 0.15, speed: m.rate }); f.anim = 'jog'; }
+        return;
+      }
+      f.move = null;
+    }
+    // everyone but the close catchers walks in with the bowler
+    if (f.cls !== 'close' && (phase === 'runup' || phase === 'delivery')) {
+      const k = phase === 'delivery' ? 1 : smooth(clamp((runupT - 0.1) / (RUNUP - 0.45), 0, 1));
+      const inX = -f.home.x, inZ = BAT_Z - f.home.z, L = Math.hypot(inX, inZ) || 1;
+      f.pos.set(f.home.x + inX / L * WALK_IN * k, 0, f.home.z + inZ / L * WALK_IN * k);
+      a.root.position.copy(f.pos); turnTo(a.root, 0, BAT_Z, 0.2);
+      const want = k < 1 ? 'walk' : 'ready';
+      if (f.anim !== want) {
+        if (want === 'walk') a.play('run', { loop: true, fade: 0.25, speed: 0.42 }); else a.play('ready', { loop: true, fade: 0.2, from: Math.random() });
+        f.anim = want;
+      }
+      return;
+    }
+    // after the ball: stroll back to the mark
+    if (phase === 'post' && f.cls !== 'close') {
+      const d = f.pos.distanceTo(f.home);
+      if (d > 0.05) {
+        f.pos.addScaledVector(_mv.subVectors(f.home, f.pos).normalize(), Math.min(d, 1.5 * dt));
+        a.root.position.copy(f.pos); turnTo(a.root, f.home.x, f.home.z, 0.2);
+        if (f.anim !== 'walk') { a.play('run', { loop: true, fade: 0.3, speed: 0.4 }); f.anim = 'walk'; }
+        return;
+      }
     }
     a.root.position.copy(f.pos);
     turnTo(a.root, ballPos.x, ballPos.z, 0.12);
@@ -1758,6 +2209,20 @@ function driveFielders(now, dt) {
   if (event && event.f && hitPath && (phase === 'hit' || phase === 'post')) driveEventFielder(now, th);
   if (event && event.f && event.f.actor && phase === 'post') event.f.anim = '';
 }
+/* fielders who are off their mark jog back (or to their new spot) before the next ball */
+function beginSetField() {
+  let maxDur = 0;
+  FIELD9.forEach(f => {
+    const d = f.pos.distanceTo(f.home);
+    if (d > 0.4) {
+      const dur = clamp(d / 7.5, 0.5, 2.6);
+      f.move = { from: f.pos.clone(), t: 0, dur, rate: clamp(d / dur / 6, 0.8, 2.2) };
+      maxDur = Math.max(maxDur, dur);
+    } else { f.move = null; f.pos.copy(f.home); }
+  });
+  return maxDur;
+}
+let setT = 0, setDur = 0;
 
 function tick(ms) {
   const wall = ms / 1000;
@@ -1766,6 +2231,12 @@ function tick(ms) {
   const dt = wallDt * fx.scale;
   gClock += dt;
   const now = gClock;
+
+  if (phase === 'setfield') {
+    setT += dt;
+    if (actorsReady) { bowlerA.root.position.set(0.5, 0, -31); bowlerA.root.rotation.y = 0; if (bowlerA.name !== 'idle') bowlerA.play('idle', { loop: true, fade: 0.2 }); bowlerA.handPos(ballPos); }
+    if (setT >= setDur) { phase = 'runup'; runupT = 0; }
+  }
 
   if (phase === 'runup') {
     runupT += dt;
@@ -1831,7 +2302,11 @@ function tick(ms) {
     if (phase === 'hit' && !eventApplied && th >= tEv) {
       eventApplied = true;
       const name = swing.name, ev = event;
-      if (ev.type === 'six') { sound.crowd(1); finishBall(6, false, 'Six', `${name}${ev.carry ? ' · ' + ev.carry + ' m' : ''}`, 'c-six'); }
+      if (ev.type === 'playedon') {
+        knockStumps(nearStumps, ev.x); sound.rattle(); sound.crowd(0.7); hitStop(0, 450, 0.35); fx.shake = 0.04;
+        finishBall(0, true, 'Bowled', `Played on · ${swing.name.toLowerCase()}`, 'c-out');
+      }
+      else if (ev.type === 'six') { sound.crowd(1); finishBall(6, false, 'Six', `${name}${ev.carry ? ' · ' + ev.carry + ' m' : ''}`, 'c-six'); }
       else if (ev.type === 'four') { sound.crowd(0.85); finishBall(4, false, 'Four', name, 'c-four'); }
       else if (ev.type === 'catch') {
         sound.crowd(0.6);
@@ -1883,6 +2358,10 @@ function tick(ms) {
     fielders.forEach(f => { if (f.actor && f !== bowlerFielder) f.actor.update(dt); });
   }
   updateStumps(nearStumps, dt);
+  if ((fm.frame++ % 3) === 0) drawFieldMap();
+  if (hitPath && event && event.x != null && (phase === 'hit' || phase === 'post') && !fm.lastShotSet) {
+    fm.lastShot = [strikerA ? strikerA.root.position.x : 0, STRIKER_Z, event.x, event.z]; fm.lastShotSet = true;
+  }
 
   /* camera */
   const hand = state.hand;

@@ -6,21 +6,29 @@ A 3D night-match cricket batting game that runs in the browser. Bat with the key
 
 ## Controls
 
-| Input | Shot |
+Aim with the arrow keys. The length of the ball decides front foot or back foot, so the same key plays a drive to a full ball and a punch or cut to a short one.
+
+| Input | What it plays |
 | --- | --- |
-| `←` / `→` | Hit to the left or right side |
-| `↑` or `Space` | Straight drive |
-| `↓` | Block |
-| Hold `Shift` | Hit it in the air |
+| `↑` or `Space` | Straight: straight drive, or back-foot punch |
+| `↑` + `←` / `→` (together) | Drive: cover drive, on drive, back-foot drive |
+| `←` / `→` | Square: square drive, cut, flick, pull (hook to a bouncer) |
+| `↓` + `←` / `→` (together) | Fine: late cut, leg glance, glance off the hips |
+| `↓` | Block: forward or back-foot defence |
+| Hold `Shift` | In the air: lofted drives, slog, hook, upper cut, slog sweep |
+| `Q` / `E` / `R` | Sweep (with `↓`: paddle sweep), reverse sweep, scoop over the keeper |
 | `A` / `D` | Step across the crease |
+| `M` | Show or hide the field map |
 | `C` | Recentre camera tracking |
+
+Leave a bouncer and the batsman ducks under it. On touch screens the pad has the same 8 directions plus Loft, Sweep, Rev and Scoop.
 
 ### Camera modes
 
 - **Camera · hand** uses MediaPipe hand tracking (loads from the internet the first time).
 - **Camera · object as bat** tracks a brightly coloured object you hold. It needs no download.
 
-Swipe left or right fast to play to that side, and angle the swipe upward to go aerial. Swipe down for a straight drive. Push toward the camera to block. Drift sideways slowly to step across the crease.
+Swipe flat left or right to play square, down and across to drive to that side, and straight down for a straight drive. A rising swipe hits it in the air, and a faster swipe hits harder. Push toward the camera to block. Drift sideways slowly to step across the crease.
 
 The camera only works on an `https://` page, so play from the GitHub Pages link rather than a downloaded file.
 
@@ -46,11 +54,20 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 
 - **Three.js** renders the ground, players and ball.
 - **Players are modelled and animated in Blender** by a script (`tools/players.py`): a padded, helmeted batsman and a capped fielder, both rigged with a skeleton.
-  - The batsman has stance, backlift, straight drive, cover drive, flick, pull, cut, block, lofted drive, leave, running and non-striker idle. In every shot the bat meets the ball on the same frame, so the animation stays in sync with the timing.
+  - The batsman has 27 clips: stance, backlift, straight/cover/on/square drives, lofted drives, slog, flick, leg glance, back-foot punch and defence, forward defence, cut, late cut, upper cut, pull, hook, sweep, slog sweep, reverse sweep, scoop, leave, duck, running and non-striker idle. In every shot the bat meets the ball on the same frame, so the animation stays in sync with the timing.
   - Fielders have idle, ready, run, catch, dive, pick-up, throw and a full bowling action. The keeper adds a squat and a take, and wears pads and gauntlets (a second mesh on the fielder skeleton).
-- Each delivery is simulated ahead of time with gravity, bounce, swing and spin.
-- Your timing against the ball's arrival sets the power. Early timing pulls the ball to the leg side and late timing pushes it to the off side. Drives go into the gaps, and cuts and pulls go square.
-- Fielders work out whether they can reach the ball in time to catch it, stop it, or chase it to the rope. Harder-hit balls are harder to stop. Only fielders you can see on the field take part, including a padded wicket-keeper and a first slip.
+- Each delivery is simulated ahead of time with gravity, bounce, swing and spin. Pace bowlers mix in yorkers and bouncers, and some overs follow a short-ball plan.
+- **Bat on ball is a real collision.** The bat has a mass and a swing speed, the ball bounces off the face with a coefficient of restitution, and friction on the face puts spin on it. So:
+  - faster bowling comes off the bat faster, and glances and late cuts use the bowler's pace;
+  - the sweet spot matters: hit it off the toe or the splice and the ball comes off slower and lower;
+  - the ball meeting the side of the blade is an edge, and its direction comes from the geometry, which is why outside edges fly to the slips and inside edges can go on to the stumps (played on);
+  - a horizontal bat to a ball that bounces higher than expected gives a top edge;
+  - lofted shots get backspin and carry further (Magnus lift), and drives with topspin kick on after they land;
+  - timing turns the face: early goes to the leg side, late to the off side, and late on a drive sends it up.
+- Your timing against the ball's arrival sets how cleanly you middle it.
+- Fielders work out whether they can reach the ball in time to catch it, stop it, or chase it to the rope. Harder-hit balls are harder to stop, and sharp chances at slip or back at the bowler go down more often than skiers.
+- **Dynamic fields.** There are 11 players: a keeper, the bowler and nine named fielders. The captain sets a field for pace or spin and for the situation: attacking with slips and close catchers after a wicket or when little is needed, boundary riders when you need a lot, a ring field to save the single, and a short-ball trap for bouncer overs. After you find a gap more than once, he moves someone there. No more than five fielders stand outside the 30-yard circle, which is marked on the grass.
+- Fielders walk in with the bowler and jog to their new positions when the field changes. A field map in the corner shows where everyone is and where your last shot went.
 - Low catches are taken crouching with hands together, high ones with the hands up. A dropped catch pops out of the hands, falls, and is picked up and thrown back.
 - The ball collides with the batsman's animated pads, thighs, body and helmet and rebounds. LBW is decided like ball tracking: where it pitched, whether the impact was in line (or outside off with no shot offered), and whether it would have gone on to hit the stumps.
 - Balls you leave or miss carry through to the keeper's gloves.

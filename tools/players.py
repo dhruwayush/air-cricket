@@ -261,6 +261,33 @@ def build_armature(name, with_bat):
 # bodies
 # --------------------------------------------------------------------------
 
+def leg_pads(s, color="#f3f1ea", thigh_flap=True):
+    pad = mat("pad" + color, color, 0.85)
+    kx = Vector(J["knee." + s]).x
+    out = [rbox((kx, -0.045, 0.3), (0.15, 0.085, 0.44), pad, "shin." + s, bevel=0.035)]
+    for z in (0.16, 0.27, 0.38):  # vertical rolls
+        out.append(cyl((kx - 0.045, -0.092, z - 0.1), (kx - 0.045, -0.092, z + 0.1), 0.012, pad, "shin." + s, verts=8))
+        out.append(cyl((kx + 0.045, -0.092, z - 0.1), (kx + 0.045, -0.092, z + 0.1), 0.012, pad, "shin." + s, verts=8))
+    out.append(ellipsoid((kx, -0.07, 0.56), (0.085, 0.055, 0.075), pad, "shin." + s))  # knee roll
+    if thigh_flap:
+        out.append(rbox((kx, -0.03, 0.66), (0.13, 0.06, 0.1), pad, "thigh." + s, bevel=0.025))
+    return out
+
+
+def keeper_gear_parts():
+    """Wicket-keeping pads and big gauntlets, skinned to the fielder rig and shown only on the keeper."""
+    parts = []
+    glove = mat("keeper_glove", "#e8dcc2", 0.75)
+    web = mat("keeper_web", "#c9b48a", 0.8)
+    for s in ("L", "R"):
+        parts += leg_pads(s, "#f1efe6", thigh_flap=False)
+        w = Vector(J["wrist." + s])
+        parts.append(limb(w + Vector((0, 0, 0.05)), w + Vector((0, 0, -0.01)), 0.052, 0.058, glove, "hand." + s, overlap=0.0))  # cuff
+        parts.append(ellipsoid(w + Vector((0, -0.012, -0.075)), (0.068, 0.058, 0.092), glove, "hand." + s))              # mitt
+        parts.append(ellipsoid(w + Vector((0, -0.052, -0.085)), (0.05, 0.02, 0.07), web, "hand." + s, seg=12, rings=8))  # palm
+    return parts
+
+
 def build_body(kind):
     """kind: 'batsman' or 'fielder'. Returns list of mesh objects (weighted by bone name)."""
     bat = kind == "batsman"
@@ -322,15 +349,8 @@ def build_body(kind):
         parts.append(limb(P("knee." + s), P("ankle." + s) + Vector((0, 0, 0.02)), 0.058, 0.042, trousers, "shin." + s))
         parts.append(ellipsoid(P("ankle." + s) + Vector((0, -0.05, -0.045)), (0.052, 0.12, 0.045), shoe, "foot." + s))
         parts.append(ellipsoid(P("ankle." + s) + Vector((0, -0.03, -0.075)), (0.055, 0.125, 0.018), mat("sole", "#2a2a2a", 0.9), "foot." + s))
-        if bat:  # batting pads
-            pad = mat("pad", "#f3f1ea", 0.85)
-            kx = P("knee." + s).x
-            parts.append(rbox((kx, -0.045, 0.3), (0.15, 0.085, 0.44), pad, "shin." + s, bevel=0.035))
-            for z in (0.16, 0.27, 0.38):  # vertical rolls
-                parts.append(cyl((kx - 0.045, -0.092, z - 0.1), (kx - 0.045, -0.092, z + 0.1), 0.012, pad, "shin." + s, verts=8))
-                parts.append(cyl((kx + 0.045, -0.092, z - 0.1), (kx + 0.045, -0.092, z + 0.1), 0.012, pad, "shin." + s, verts=8))
-            parts.append(ellipsoid((kx, -0.07, 0.56), (0.085, 0.055, 0.075), pad, "shin." + s))  # knee roll
-            parts.append(rbox((kx, -0.03, 0.66), (0.13, 0.06, 0.1), pad, "thigh." + s, bevel=0.025))  # thigh flap
+        if bat:
+            parts += leg_pads(s)
 
     if bat:
         helmet = mat("helmet", "#16244a", 0.35)
@@ -381,7 +401,24 @@ def build_character(kind):
     body.parent = rig
     mod = body.modifiers.new("rig", "ARMATURE")
     mod.object = rig
+    EXTRAS[kind] = []
+    if kind == "fielder":
+        gp = keeper_gear_parts()
+        bpy.ops.object.select_all(action="DESELECT")
+        for p in gp:
+            p.select_set(True)
+        bpy.context.view_layer.objects.active = gp[0]
+        bpy.ops.object.join()
+        gear = bpy.context.active_object
+        gear.name = "keeper_gear"
+        gear.parent = rig
+        gm = gear.modifiers.new("rig", "ARMATURE")
+        gm.object = rig
+        EXTRAS[kind].append(gear)
     return rig, body
+
+
+EXTRAS = {}
 
 
 # --------------------------------------------------------------------------
@@ -782,6 +819,16 @@ BOWL_FOLLOW = F(hips=((0, -0.3, -0.12), (0.4, 0.4, 0)), spine=(0.5, 0.3, 0), che
                 uaL=(-0.4, 0.3), faL=0.8, uaR=(4.6, -0.5), faR=0.2,
                 thL=(0.3, 0.05), shL=0.3, thR=(0.7, 0.05), shR=0.9, ftR=0.2)
 
+# wicket-keeper: deep squat behind the stumps, then rise to take the ball in front of the chest
+KEEP = F(hips=((0, 0.2, -0.4), (0.4, 0, 0)), spine=(0.25, 0, 0), chest=(0.1, 0, 0), neck=(-0.45, 0, 0), head=(-0.3, 0, 0),
+         uaL=(1.2, 0.12), faL=0.45, uaR=(1.2, 0.12), faR=0.45, hL=0.15, hR=0.15,
+         thL=(1.75, 0.32), shL=1.9, ftL=-0.5, thR=(1.75, 0.32), shR=1.9, ftR=-0.5)
+KEEP_UP = F(KEEP, hips=((0, 0.14, -0.3), (0.3, 0, 0)), thL=(1.45, 0.3), shL=1.6, ftL=-0.4, thR=(1.45, 0.3), shR=1.6, ftR=-0.4)
+GATHER = F(hips=((0, 0.1, -0.22), (0.22, 0, 0)), spine=(0.12, 0, 0), chest=(0.0, 0, 0), neck=(-0.2, 0, 0), head=(-0.15, 0, 0),
+           uaL=(1.3, 0.05), faL=1.1, uaR=(1.3, 0.05), faR=1.1, hL=-0.2, hR=-0.2,
+           thL=(1.05, 0.25), shL=1.3, ftL=-0.3, thR=(1.05, 0.25), shR=1.3, ftR=-0.3)
+GATHER_IN = F(GATHER, uaL=(0.9, 0.08), faL=1.7, uaR=(0.9, 0.08), faR=1.7, spine=(0.2, 0, 0))
+
 FIELDER_CLIPS = {
     "idle": [(0.0, F_BASE), (1.0, F(chest=(0.0, 0, 0), spine=(0.03, 0.03, 0), head=(0.03, 0.05, 0))), (2.0, F_BASE)],
     "ready": [(0.0, READY), (0.5, F(READY, hips=((0, -0.04, -0.13), (0.28, 0, 0)))), (1.0, READY)],
@@ -792,6 +839,8 @@ FIELDER_CLIPS = {
     "throw": [(0.0, PICK_2), (0.2, THROW_1), (0.38, THROW_2), (0.65, THROW_3), (1.0, F_BASE)],
     "bowl": [(0.0, RUN_A), (0.18, BOWL_GATHER), (0.4, BOWL_COIL), (RELEASE, BOWL_RELEASE), (0.8, BOWL_FOLLOW),
              (1.3, F(RUN_B, spine=(0.3, 0.1, 0)))],
+    "keep": [(0.0, KEEP), (0.5, KEEP_UP), (1.0, KEEP)],
+    "gather": [(0.0, KEEP), (0.3, GATHER), (0.55, GATHER_IN), (1.2, GATHER_IN)],   # ball is taken at 0.3 s
 }
 
 
@@ -883,6 +932,8 @@ def export(kind, rig, body):
     bpy.ops.object.select_all(action="DESELECT")
     rig.select_set(True)
     body.select_set(True)
+    for e in EXTRAS.get(kind, []):
+        e.select_set(True)
     bpy.context.view_layer.objects.active = rig
     path = os.path.join(OUT, kind + ".glb")
     bpy.ops.export_scene.gltf(
@@ -950,6 +1001,11 @@ if __name__ == "__main__":
         times = [float(x) for x in sys.argv[3].split(",")]
         reset()
         rig, body, C, ranges = build_animated(kind)
+        if "--gear" in sys.argv:
+            pass
+        else:
+            for e in EXTRAS.get(kind, []):
+                e.hide_render = True
         if kind == "batsman":   # game camera (behind the stumps) + side-on from the off side
             views = [((-4.6, -0.5, 2.1), (1.0, -0.1, 0.8)), ((0.2, -4.2, 1.1), (0.2, 0.0, 0.9))]
         else:

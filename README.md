@@ -47,10 +47,13 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - **Three.js** renders the ground, players and ball.
 - **Players are modelled and animated in Blender** by a script (`tools/players.py`): a padded, helmeted batsman and a capped fielder, both rigged with a skeleton.
   - The batsman has stance, backlift, straight drive, cover drive, flick, pull, cut, block, lofted drive, leave, running and non-striker idle. In every shot the bat meets the ball on the same frame, so the animation stays in sync with the timing.
-  - Fielders have idle, ready, run, catch, dive, pick-up, throw and a full bowling action.
+  - Fielders have idle, ready, run, catch, dive, pick-up, throw and a full bowling action. The keeper adds a squat and a take, and wears pads and gauntlets (a second mesh on the fielder skeleton).
 - Each delivery is simulated ahead of time with gravity, bounce, swing and spin.
 - Your timing against the ball's arrival sets the power. Early timing pulls the ball to the leg side and late timing pushes it to the off side. Drives go into the gaps, and cuts and pulls go square.
-- Fielders work out whether they can reach the ball in time to catch it, stop it, or chase it to the rope. Harder-hit balls are harder to stop.
+- Fielders work out whether they can reach the ball in time to catch it, stop it, or chase it to the rope. Harder-hit balls are harder to stop. Only fielders you can see on the field take part, including a padded wicket-keeper and a first slip.
+- Low catches are taken crouching with hands together, high ones with the hands up. A dropped catch pops out of the hands, falls, and is picked up and thrown back.
+- The ball collides with the batsman's animated pads, thighs, body and helmet and rebounds. LBW is decided like ball tracking: where it pitched, whether the impact was in line (or outside off with no shot offered), and whether it would have gone on to hit the stumps.
+- Balls you leave or miss carry through to the keeper's gloves.
 - The batsmen run between the wickets, and fielders pick up and throw back.
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.

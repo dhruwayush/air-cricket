@@ -330,7 +330,7 @@ function resize() {
   const w = stage.clientWidth || window.innerWidth, h = stage.clientHeight || window.innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
-  camera.fov = w / h < 0.8 ? 64 : 50;
+  camera.fov = w / h < 0.8 ? 52 : 36;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
@@ -545,13 +545,15 @@ function loadModels() {
 
 const blobTex = shadowTex;
 class Actor {
-  constructor(kind, modelYaw) {
+  constructor(kind, modelYaw, opts) {
     const src = models[kind];
     this.root = new THREE.Group();
     this.mirror = new THREE.Group();
     this.model = THREE.SkeletonUtils.clone(src.scene);
     this.model.rotation.y = modelYaw || 0;
     this.model.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
+    const gear = this.model.getObjectByName('keeper_gear');          // pads + gauntlets, keeper only
+    if (gear) gear.visible = !!(opts && opts.keeper);
     this.mirror.add(this.model); this.root.add(this.mirror); scene.add(this.root);
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.55, depthWrite: false }));
     this.shadow.rotation.x = -Math.PI / 2; this.shadow.position.y = 0.01; scene.add(this.shadow);
@@ -598,7 +600,8 @@ class Actor {
 const _v2 = new THREE.Vector3();
 
 let strikerA = null, nonA = null, bowlerA = null;
-const striker = { x: -0.36, yawRun: 0 };
+const STANCE_X = -0.24;   // middle-and-leg guard: pads in front of leg and middle stump
+const striker = { x: STANCE_X, yawRun: 0 };
 
 /* ---- fielding side (logic lives here; actors attach once models load) ---- */
 const fielders = [];
@@ -611,8 +614,9 @@ function addFielder(name, opts) {
   fielders.push(f); return f;
 }
 FIELD_SET.forEach(([n]) => addFielder(n));
-const keeper = addFielder('Keeper', { hidden: true, speed: 3.2, react: 0.05, catchReach: 1.1, groundReach: 0.9, catchH: 2.1 });
-const slip = addFielder('First slip', { hidden: true, speed: 3.6, react: 0.1, catchReach: 1.0, groundReach: 0.8, catchH: 2.2 });
+const KEEP_Z = 3.5;   // keeper squats this far behind the stumps
+const keeper = addFielder('Keeper', { role: 'keeper', speed: 3.2, react: 0.05, catchReach: 1.1, groundReach: 0.9, catchH: 2.1 });
+const slip = addFielder('First slip', { role: 'slip', speed: 3.6, react: 0.1, catchReach: 1.0, groundReach: 0.8, catchH: 2.2 });
 const bowlerFielder = addFielder('Bowler', { hidden: true, speed: 5.5, react: 0.25, catchReach: 1.2, groundReach: 1.0, catchH: 2.4 });
 function placeField() {
   const hand = state.hand;
@@ -621,7 +625,7 @@ function placeField() {
     f.home.set(hand * Math.sin(a * DEG) * d, 0, BAT_Z - Math.cos(a * DEG) * d);
     f.pos.copy(f.home);
   });
-  keeper.home.set(0, 0, 2.6); slip.home.set(hand * 1.0, 0, 3.0); bowlerFielder.home.set(1.3, 0, -16.9);
+  keeper.home.set(0, 0, KEEP_Z); slip.home.set(hand * 1.45, 0, KEEP_Z + 0.35); bowlerFielder.home.set(1.3, 0, -16.9);
   [keeper, slip, bowlerFielder].forEach(f => f.pos.copy(f.home));
 }
 function faceTo(obj, x, z) { const dx = x - obj.position.x, dz = z - obj.position.z; if (dx * dx + dz * dz > 1e-4) obj.rotation.y = Math.atan2(-dx, -dz); }
@@ -635,7 +639,7 @@ function initActors() {
   strikerA = new Actor('batsman', Math.PI / 2);
   nonA = new Actor('batsman', 0);
   bowlerA = new Actor('fielder', 0);
-  fielders.forEach(f => { if (!f.hidden) f.actor = new Actor('fielder', Math.PI); });
+  fielders.forEach(f => { if (!f.hidden) f.actor = new Actor('fielder', Math.PI, { keeper: f === keeper }); });
   bowlerFielder.actor = bowlerA;
   strikerA.play('stance', { loop: true, fade: 0 });
   nonA.play('backup', { loop: true, fade: 0 });
@@ -648,7 +652,7 @@ function placeActors() {
   if (!actorsReady) return;
   const hand = state.hand;
   strikerA.mirror.scale.x = hand; nonA.mirror.scale.x = hand;
-  striker.x = hand * -0.36 + state.foot * FOOT_STEP;
+  striker.x = hand * STANCE_X + state.foot * FOOT_STEP;
   strikerA.root.position.set(striker.x, 0, STRIKER_Z); strikerA.root.rotation.y = 0;
   nonA.root.position.set(-0.95 * hand, 0, NON_Z); nonA.root.rotation.y = 0;
   if (phase === 'menu' || phase === 'over') { bowlerA.root.position.set(0.6, 0, -30); bowlerA.root.rotation.y = 0; }
@@ -723,6 +727,80 @@ function driveRuns(now) {
   });
 }
 
+/* ---- ball against the batsman's body: pads, thighs, torso, helmet ---- */
+const BODY_PARTS = [
+  ['shin.L', 'foot.L', 0.095, 'pad'], ['shin.R', 'foot.R', 0.095, 'pad'],
+  ['thigh.L', 'shin.L', 0.085, 'thigh'], ['thigh.R', 'shin.R', 0.085, 'thigh'],
+  ['hips', 'neck', 0.16, 'body'],
+];
+const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _pp = new THREE.Vector3(), _pc = new THREE.Vector3();
+function closestOnSegment(p, a, b, out) {
+  const ab = _pc.subVectors(b, a), l2 = ab.lengthSq();
+  const t = l2 > 1e-9 ? clamp(_pp.subVectors(p, a).dot(ab) / l2, 0, 1) : 0;
+  return out.copy(a).addScaledVector(ab, t);
+}
+function bodyContact(t0, t1) {
+  strikerA.root.updateMatrixWorld(true);
+  const segs = BODY_PARTS.map(([a, b, r, part]) => ({
+    a: strikerA.bone(a).getWorldPosition(new THREE.Vector3()), b: strikerA.bone(b).getWorldPosition(new THREE.Vector3()), r, part }));
+  const hb = strikerA.bone('head').getWorldPosition(new THREE.Vector3()), nk = strikerA.bone('neck').getWorldPosition(new THREE.Vector3());
+  const hc = hb.clone().addScaledVector(hb.clone().sub(nk).normalize(), 0.12);
+  segs.push({ a: hc, b: hc, r: 0.14, part: 'head' });
+  const p = new THREE.Vector3(), c = new THREE.Vector3();
+  const zMin = STRIKER_Z - 1.0, zMax = STRIKER_Z + 0.7;
+  for (let t = t0; t <= t1 + 1e-9; t += DT / 2) {           // sub-steps: the ball moves ~40 m/s, far more than a pad per frame
+    samplePath(del.path, Math.min(t, t1), p);
+    if (p.z < zMin || p.z > zMax || p.y > 2.1) continue;
+    for (const g of segs) {
+      closestOnSegment(p, g.a, g.b, c);
+      if (p.distanceTo(c) < g.r + BALL_R) return { t: Math.min(t, t1), p: p.clone(), c: c.clone(), seg: g };
+    }
+  }
+  return null;
+}
+function lbwVerdict(hit) {
+  const legSign = -state.hand, S = 0.1143 + BALL_R;
+  const offered = !!swing;                                       // any shot, including a block
+  const pitched = del.bounceT < hit.t;
+  if (pitched && del.bouncePos.x * legSign > S) return { out: false, why: 'Pitched outside leg' };
+  const ix = hit.p.x;
+  if (ix * legSign > S) return { out: false, why: 'Impact outside leg' };
+  if (-ix * legSign > S && offered) return { out: false, why: 'Impact outside off, playing a shot' };
+  const sp = del.stumpsPos;                                      // ball tracking: the unobstructed path at the stumps
+  if (!sp || sp.y > 0.71 + BALL_R) return { out: false, why: 'Going over the stumps' };
+  if (Math.abs(sp.x) > S) return { out: false, why: sp.x * legSign > 0 ? 'Missing leg stump' : 'Missing off stump' };
+  const zone = sp.x * legSign > 0.045 ? 'leg stump' : sp.x * legSign < -0.045 ? 'off stump' : 'middle';
+  return { out: true, why: `${pitched ? 'Pitched in line' : 'Full toss'}, hitting ${zone}` };
+}
+function onBodyHit(hit, now) {
+  padHit = true; bowledChecked = true; keeperHold = false;
+  const W = LEVELS[state.level].W;
+  if (swing && !swing.resolved) {                                 // swung too late: the ball got there first
+    swing.resolved = true; swing.outcome = 'late'; swing.err = swing.tc - del.tHit; showMeter(swing.err, W);
+  }
+  // rebound off the pad / body
+  const v = samplePath(del.path, hit.t + 0.004, new THREE.Vector3()).sub(samplePath(del.path, Math.max(0, hit.t - 0.004), new THREE.Vector3())).divideScalar(0.008);
+  const n = hit.p.clone().sub(hit.c); if (n.lengthSq() < 1e-8) n.set(0, 0, -1); n.normalize();
+  const pos = hit.c.clone().addScaledVector(n, hit.seg.r + BALL_R + 0.005);
+  const vn = v.dot(n); if (vn < 0) v.addScaledVector(n, -1.3 * vn);
+  v.multiplyScalar(hit.seg.part === 'head' ? 0.45 : 0.32);
+  v.x += rand(-0.6, 0.6); v.z += rand(-0.4, 0.4);
+  hitPath = simulateHit({ x: pos.x, y: pos.y, z: pos.z }, { x: v.x, y: v.y, z: v.z });
+  hitWall = now;
+  const verdict = lbwVerdict(hit);
+  event = { type: 'body', part: hit.seg.part, verdict, t: 99, f: null };
+  ballPos.copy(pos);
+  sound.pad(hit.seg.part === 'head' ? 0.9 : 0.6); fx.shake = hit.seg.part === 'head' ? 0.05 : 0.02;
+  const part = hit.seg.part, where = part === 'head' ? 'On the helmet' : part === 'body' ? 'On the body' : 'Off the pad';
+  if (verdict.out) {
+    sound.crowd(0.75); hitStop(0, 480, 0.35);
+    finishBall(0, true, 'LBW', verdict.why, 'c-out');
+  } else {
+    const head = part === 'head' ? 'Hit on the helmet' : part === 'body' ? 'Hit on the body' : 'Not out';
+    finishBall(0, false, head, part === 'pad' || part === 'thigh' ? `${where} · ${verdict.why}` : `Not out · ${verdict.why}`, 'c-quiet');
+  }
+}
+
 /* ---- the fielder who takes the ball ---- */
 let throwPlan = null;
 function driveEventFielder(now, th) {
@@ -745,18 +823,66 @@ function driveEventFielder(now, th) {
   }
   if (!f._acted) {
     f._acted = true;
-    if (type === 'catch' || type === 'drop') a.play('catch', { fade: 0.1 });
+    // low catches are taken crouching with the hands together, high ones with the hands up
+    if (type === 'catch' || type === 'drop') a.play(f.role === 'keeper' || (event.y != null && event.y < 1.05) ? 'gather' : 'catch', { fade: 0.1 });
     else if (event.slack != null && event.slack < 0.15 && f._start.distanceTo(target) > 3) { a.play('dive', { fade: 0.08, speed: 1.2 }); f._dive = true; }
     else a.play('pickup', { fade: 0.1, speed: 1.1 });
   }
-  if (type === 'field' && !f._dive && !throwPlan && th > tEv + 0.4) {
+  if (type === 'drop' && event.spill) {
+    // the ball has popped out: go to where it settles and pick it up
+    const sp = event.spill, ts = th - sp.t0, grab = sp.tPick - 0.25;   // pickup clip reaches the ground at 0.25 s
+    if (!f._spillFrom) f._spillFrom = a.root.position.clone();
+    const stand = sp.stand;
+    if (ts < grab) {
+      const k = smooth(clamp((ts - 0.35) / Math.max(0.1, grab - 0.35), 0, 1));
+      a.root.position.copy(f._spillFrom).lerp(stand, k); f.pos.copy(a.root.position);
+      if (ts > 0.35) {
+        turnTo(a.root, sp.pickPos.x, sp.pickPos.z, 0.3);
+        if (f._spillFrom.distanceTo(stand) > 0.6 && a.name !== 'run') a.play('run', { loop: true, speed: 1.3, fade: 0.12 });
+      }
+    } else {
+      a.root.position.copy(stand); f.pos.copy(stand);
+      if (!f._picked) { f._picked = true; f._pickTh = th; turnTo(a.root, sp.pickPos.x, sp.pickPos.z, 1); a.play('pickup', { fade: 0.08 }); }
+    }
+  }
+  const readyToThrow = (type === 'field' && !f._dive && th > tEv + 0.4) || (type === 'drop' && f._picked && th > f._pickTh + 0.5);
+  if (readyToThrow && !throwPlan) {
     a.play('throw', { fade: 0.1 });
-    const toFar = Math.hypot(event.x, event.z - FAR_Z) < Math.hypot(event.x, event.z);
-    throwPlan = { a, start: now, from: null, to: new THREE.Vector3(0.3, 1.1, toFar ? FAR_Z - 0.6 : 0.8), dur: clamp(Math.hypot(event.x, event.z - (toFar ? FAR_Z : 0)) / 26, 0.4, 1.8) };
+    const fx0 = a.root.position.x, fz0 = a.root.position.z;
+    const farEnd = Math.hypot(fx0, fz0 - FAR_Z) < Math.hypot(fx0, fz0);
+    throwPlan = { a, start: now, from: null, to: new THREE.Vector3(0.3, 1.1, farEnd ? FAR_Z - 0.6 : 0.8), dur: clamp(Math.hypot(fx0, fz0 - (farEnd ? FAR_Z : 0)) / 26, 0.4, 1.8) };
+    turnTo(a.root, 0.3, farEnd ? FAR_Z : 0.8, 1);
   }
 }
+function ballWithFielder(now, th, f) {
+  const a = f.actor;
+  if (event.type === 'drop') {
+    if (!event.spill) {
+      // the ball bursts out of the hands: up and away, then falls and rolls
+      const from = a.handPos(new THREE.Vector3(), true);
+      const dir = a.root.rotation.y + rand(-1.4, 1.4);
+      const sp = rand(1.2, 2.4);
+      const path = simulateHit({ x: from.x, y: from.y, z: from.z }, { x: -Math.sin(dir) * sp, y: rand(2.0, 3.0), z: -Math.cos(dir) * sp });
+      const land = path.landIdx > 0 ? path.landIdx * path.dt : 0.6;
+      const tPick = Math.min(land + 0.5, (path.n - 1) * path.dt + 0.2);
+      const pickPos = samplePath(path, tPick, new THREE.Vector3());
+      const back = new THREE.Vector3(pickPos.x - a.root.position.x, 0, pickPos.z - a.root.position.z);
+      const d = back.length();
+      const stand = d > 0.45 ? a.root.position.clone().addScaledVector(back.normalize(), d - 0.45) : a.root.position.clone();
+      event.spill = { path, t0: th, tPick, pickPos, stand };
+      sound.tock(0.25);
+    }
+    const sp = event.spill, ts = th - sp.t0;
+    if (ts < sp.tPick) { samplePath(sp.path, ts, ballPos); return; }
+  }
+  if (throwPlan && now - throwPlan.start > 0.38) {
+    if (!throwPlan.from) throwPlan.from = a.handPos(new THREE.Vector3());
+    const u = clamp((now - throwPlan.start - 0.38) / throwPlan.dur, 0, 1);
+    ballPos.copy(throwPlan.from).lerp(throwPlan.to, u); ballPos.y += Math.sin(u * Math.PI) * throwPlan.dur * 2.2;
+  } else a.handPos(ballPos, event.type === 'catch' || f.role === 'keeper');
+}
 function resetFielderEvent() {
-  fielders.forEach(f => { f._start = null; f._acted = false; f._dive = false; });
+  fielders.forEach(f => { f._start = null; f._acted = false; f._dive = false; f._picked = false; f._pickTh = 0; f._spillFrom = null; });
   throwPlan = null; runPlan = null; bowlerFree = false;
 }
 
@@ -772,6 +898,7 @@ let phase = 'menu';          // menu | runup | delivery | hit | post | over
 let runupT = 0, relWall = 0, hitWall = 0, postUntil = 0, lastWall = 0;
 let del = null, swing = null, hitPath = null, event = null, eventApplied = false, deadInfo = null;
 let bowledChecked = false, bouncedShown = false;
+let keeperHold = false, padHit = false, lastTd = 0;
 const ballPos = new THREE.Vector3();
 
 /* ============================================================
@@ -841,7 +968,7 @@ function makeDelivery() {
         vel.x = vel.x * fric + dev; vel.z *= fric;
       } else { vel.y = -vel.y * 0.4; vel.x *= 0.8; vel.z *= 0.8; }
     }
-    if (p.z > 4.2) break;
+    if (p.z > KEEP_Z - 0.35) break;
   }
   const path = { data: new Float32Array(data), n: data.length / 3, dt: DT };
   const hit = crossZ(path, HIT_Z), stumps = crossZ(path, 0);
@@ -849,6 +976,7 @@ function makeDelivery() {
     type, kmh, lenName, len, path, bounceT, bouncePos,
     tHit: hit.t, hitPos: hit, tStumps: stumps ? stumps.t : 99, stumpsPos: stumps,
     tEnd: (path.n - 1) * DT,
+    keepAt: { x: path.data[(path.n - 1) * 3], y: path.data[(path.n - 1) * 3 + 1] },
   };
 }
 
@@ -882,7 +1010,7 @@ function resolveSwing() {
   const defend = swing.dir === 'block';
   const dirSign = swing.dir === 'left' ? -1 : swing.dir === 'right' ? 1 : 0;
   const legSign = -hand;
-  const batLine = hand * -0.06 + state.foot * FOOT_STEP;
+  const batLine = hand * (STANCE_X + 0.3) + state.foot * FOOT_STEP;   // where the blade comes down, from the animation
   const dx = hp.x - batLine, ad = Math.abs(dx);
   const reach = defend ? 0.46 : dirSign === 0 ? 0.4 : (Math.sign(dx) === dirSign ? 0.62 : 0.3);
   if (ad > reach) { swing.outcome = 'beaten'; return; }
@@ -969,23 +1097,25 @@ function findEvent(path, kind) {
     const hard = clamp((hs - 18) / 16, 0, 1);                            // 0 = gentle, 1 = rocket
     const airborne = path.landIdx < 0 || i < path.landIdx;
     for (const f of fielders) {
+      if (actorsReady && !f.actor) continue;
       const dist = Math.hypot(x - f.home.x, z - f.home.z);
       let need, type;
       if (airborne) { if (y < 0.2 || y > f.catchH) continue; need = f.react + Math.max(0, dist - f.catchReach * (1 - 0.35 * hard)) / f.speed; type = 'catch'; }
       else { if (y > 0.75) continue; need = f.react + Math.max(0, dist - f.groundReach * (1 - 0.55 * hard)) / (f.speed * (1 - 0.2 * hard)); type = 'field'; }
-      if (need <= t) { const slack = t - need; if (!best || slack > best.slack) best = { type, f, i, t, slack, x, z }; }
+      if (need <= t) { const slack = t - need; if (!best || slack > best.slack) best = { type, f, i, t, slack, x, y, z }; }
     }
   }
   if (!best && path.boundaryIdx >= 0) {
     const i = path.boundaryIdx, x = d[i * 3], z = d[i * 3 + 2];
     let chaser = null, bn = 1e9;
-    fielders.forEach(f => { if (f.hidden) return; const n = Math.hypot(x - f.home.x, z - f.home.z); if (n < bn) { bn = n; chaser = f; } });
+    fielders.forEach(f => { if (f.hidden || f.role === 'keeper' || (actorsReady && !f.actor)) return; const n = Math.hypot(x - f.home.x, z - f.home.z); if (n < bn) { bn = n; chaser = f; } });
     best = { type: path.boundaryAir ? 'six' : 'four', f: chaser, i, t: i * dt, x, z, chase: true };
   }
   if (!best) {
     const i = path.n - 1, x = d[i * 3], z = d[i * 3 + 2], te = i * dt;
     let bt = 1e9;
     fielders.forEach(f => {
+      if (actorsReady && !f.actor) return;
       const need = f.react + Math.max(0, Math.hypot(x - f.home.x, z - f.home.z) - f.groundReach) / f.speed;
       const tt = Math.max(te, need); if (tt < bt) { bt = tt; best = { type: 'field', f, i, t: tt, x, z }; }
     });
@@ -1087,6 +1217,7 @@ const sound = (() => {
       o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.2);
     },
     thud() { if (!ctx) return; burst(260, 0.9, 0.09, 0.22, 'lowpass'); },
+    pad(v) { if (!ctx) return; burst(520, 1.1, 0.08, 0.4 * v, 'bandpass'); burst(180, 0.8, 0.12, 0.35 * v, 'lowpass'); },
     rattle() { if (!ctx) return; burst(2600, 6, 0.08, 0.35); setTimeout(() => burst(3100, 7, 0.07, 0.25), 45); setTimeout(() => burst(2200, 5, 0.1, 0.2), 90); },
     crowd(level) {
       if (!ctx) return;
@@ -1422,7 +1553,7 @@ function nextBall() {
     state.spinTurn = Math.random() < 0.5 ? 1 : -1;
   }
   phase = 'runup'; runupT = 0; swing = null; hitPath = null; event = null; deadInfo = null;
-  bowledChecked = false; bouncedShown = false;
+  bowledChecked = false; bouncedShown = false; keeperHold = false; padHit = false; lastTd = 0;
   state.foot = 0;
   resetStumps(nearStumps); bounceMark.visible = false; bounceMark.material.opacity = 0.85; clearTrail();
   fielders.forEach(f => f.pos.copy(f.home));
@@ -1457,7 +1588,8 @@ function finishBall(runs, wicket, headline, sub, cls) {
   updateHUD();
   phase = 'post'; postUntil = gnow() + (runs >= 4 || wicket ? 2.4 : 1.9);
   if (runPlan) postUntil = Math.max(postUntil, runPlan.start + runPlan.n * runPlan.dur + 0.8);
-  if (event && event.type === 'field' && event.f && event.f.actor) postUntil = Math.max(postUntil, hitWall + event.t + 1.9);
+  if (event && (event.type === 'field' || event.type === 'drop') && event.f && event.f.actor)
+    postUntil = Math.max(postUntil, hitWall + event.t + (event.type === 'drop' ? 3.2 : 1.9));
 }
 function inningsOver() {
   if (state.mode !== 'chase') return null;
@@ -1554,7 +1686,8 @@ $('btn-settings').addEventListener('click', () => { phase = 'over'; openMenu(fal
 /* ============================================================
    MAIN LOOP
    ============================================================ */
-const camPos = new THREE.Vector3(0.3, 2.45, 3.9), camLook = new THREE.Vector3(0, 0.9, -14);
+const CAM = { x: 0.3, y: 3.25, z: 7.6 };   // behind the keeper, above the batsman's eyeline
+const camPos = new THREE.Vector3(CAM.x, CAM.y, CAM.z), camLook = new THREE.Vector3(0, 0.9, -14);
 const camPosT = new THREE.Vector3(), camLookT = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 
@@ -1586,7 +1719,7 @@ let puffT = -1;
 
 function updateStriker(now, dt) {
   const hand = state.hand;
-  const tx = hand * -0.36 + state.foot * FOOT_STEP;
+  const tx = hand * STANCE_X + state.foot * FOOT_STEP;
   if (!runPlan || now < runPlan.start) {
     striker.x = lerp(striker.x, tx, 1 - Math.exp(-dt * 14));
     strikerA.root.position.set(striker.x, 0, STRIKER_Z);
@@ -1607,9 +1740,19 @@ function driveFielders(now, dt) {
   fielders.forEach(f => {
     const a = f.actor; if (!a || f === bowlerFielder) return;
     if (event && event.f === f && hitPath) return;
+    const alert = phase === 'delivery' || (phase === 'runup' && runupT > 0.7);
+    if (f === keeper) {
+      if (phase === 'delivery' && del && del.keepAt) f.pos.x = lerp(f.pos.x, del.keepAt.x, 1 - Math.exp(-dt * 4));
+      a.root.position.copy(f.pos);
+      a.root.rotation.y = 0;
+      if (keeperHold) { if (f.anim !== 'gather') { a.play('gather', { fade: 0.08 }); f.anim = 'gather'; } return; }
+      const want = alert ? 'keep' : phase === 'hit' ? 'ready' : 'idle';
+      if (f.anim !== want) { a.play(want, { loop: want !== 'gather', fade: 0.3, from: want === 'keep' ? 0 : Math.random() }); f.anim = want; }
+      return;
+    }
     a.root.position.copy(f.pos);
     turnTo(a.root, ballPos.x, ballPos.z, 0.12);
-    const want = phase === 'delivery' || (phase === 'runup' && runupT > 0.7) || phase === 'hit' ? 'ready' : 'idle';
+    const want = alert || phase === 'hit' ? 'ready' : 'idle';
     if (f.anim !== want) { a.play(want, { loop: true, fade: 0.35, from: Math.random() }); f.anim = want; }
   });
   if (event && event.f && hitPath && (phase === 'hit' || phase === 'post')) driveEventFielder(now, th);
@@ -1647,6 +1790,14 @@ function tick(ms) {
       puff.position.set(del.bouncePos.x, 0.015, del.bouncePos.z); puffT = 0; sound.thud();
     }
     if (swing && !swing.resolved && td >= swing.tc) resolveSwing();
+    if (phase === 'delivery' && actorsReady && !padHit && td > lastTd) {
+      const hit = bodyContact(lastTd, td);
+      if (hit) onBodyHit(hit, now);
+    }
+    lastTd = td;
+    if (phase === 'delivery' && actorsReady && !keeperHold && td >= del.tEnd - 0.3) {
+      keeperHold = true;                          // keeper rises to take it; ball is in the gloves at tEnd
+    }
     if (phase === 'delivery') {
       const pending = swing && !swing.resolved;
       if (!bowledChecked && !pending && td >= del.tStumps) {
@@ -1676,13 +1827,7 @@ function tick(ms) {
     const tEv = event.t, boundary = event.type === 'six' || event.type === 'four';
     samplePath(hitPath, boundary ? th : Math.min(th, tEv), ballPos);
     const f = event.f;
-    if (!boundary && th >= tEv && f && f.actor) {
-      if (throwPlan && now - throwPlan.start > 0.38) {
-        if (!throwPlan.from) throwPlan.from = f.actor.handPos(new THREE.Vector3());
-        const u = clamp((now - throwPlan.start - 0.38) / throwPlan.dur, 0, 1);
-        ballPos.copy(throwPlan.from).lerp(throwPlan.to, u); ballPos.y += Math.sin(u * Math.PI) * throwPlan.dur * 2.2;
-      } else f.actor.handPos(ballPos, event.type === 'catch');
-    }
+    if (!boundary && th >= tEv && f && f.actor) ballWithFielder(now, th, f);
     if (phase === 'hit' && !eventApplied && th >= tEv) {
       eventApplied = true;
       const name = swing.name, ev = event;
@@ -1700,6 +1845,9 @@ function tick(ms) {
       }
     }
   }
+
+  if (keeperHold && actorsReady && phase === 'post' && !hitPath && !deadInfo && keeper.actor.name === 'gather' && keeper.actor.t >= 0.3)
+    keeper.actor.handPos(ballPos, true);
 
   if (phase === 'post' && now >= postUntil) {
     const res = inningsOver();
@@ -1738,12 +1886,12 @@ function tick(ms) {
 
   /* camera */
   const hand = state.hand;
-  camPosT.set(0.3 * hand, 2.45, 3.9); camLookT.set(0, 0.9, -14);
+  camPosT.set(CAM.x * hand, CAM.y, CAM.z); camLookT.set(0, 0.9, -14);
   if ((phase === 'hit' || phase === 'post') && hitPath) {
     const far = Math.hypot(ballPos.x, ballPos.z - BAT_Z);
     if (far > 3) {
       camLookT.set(ballPos.x, Math.max(0.5, ballPos.y * 0.8), ballPos.z);
-      camPosT.set(0.3 * hand + ballPos.x * 0.05, 2.6 + Math.min(9, far * 0.1), 3.9 + Math.min(6, far * 0.06));
+      camPosT.set(CAM.x * hand + ballPos.x * 0.05, CAM.y + Math.min(8, far * 0.09), CAM.z + Math.min(4, far * 0.04));
     }
   }
   const k = 1 - Math.exp(-wallDt * 3.2);

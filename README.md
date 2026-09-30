@@ -24,6 +24,24 @@ Swipe left or right fast to play to that side, and angle the swipe upward to go 
 
 The camera only works on an `https://` page, so play from the GitHub Pages link rather than a downloaded file.
 
+## Android app
+
+Every push to `main` builds an APK on GitHub Actions. Download the latest from
+**Releases → Android APK (latest)** (`air-cricket.apk`), open it on your phone and allow installing from that source.
+
+- The game, three.js and fonts are bundled, so it plays offline. Hand tracking still downloads its model the first time.
+- The camera modes work in the app (Android asks for camera permission the first time).
+- New builds install over the old one, no uninstall needed.
+
+To build locally you need Node 22, JDK 21 and the Android SDK:
+
+```sh
+npm install
+npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`tools/prepare-www.mjs` copies `index.html` into `www/` and swaps the CDN scripts and Google Fonts for local copies; `npm run sync` copies that into `android/`.
+
 ## How it works
 
 - **Three.js** renders the ground, players and ball.

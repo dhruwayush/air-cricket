@@ -1,0 +1,9 @@
+{
+  "appId": "io.github.dhruwayush.aircricket",
+  "appName": "Air Cricket",
+  "webDir": "www",
+  "backgroundColor": "#08161b",
+  "android": {
+    "backgroundColor": "#08161b"
+  }
+}

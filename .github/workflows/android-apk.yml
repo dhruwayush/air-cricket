@@ -1,0 +1,60 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['README.md', 'tools/players.py', 'tools/build/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install
+        run: npm ci
+
+      - name: Copy the game into the Android project
+        run: npm run sync
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../air-cricket.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: air-cricket-apk
+          path: air-cricket.apk
+
+      # Always-current download link: Releases -> "Android APK (latest)"
+      - name: Publish to the "apk" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk --cleanup-tag --yes || true
+          gh release create apk air-cricket.apk \
+            --title "Android APK (latest)" \
+            --notes "Built from ${GITHUB_SHA::7} (build #${GITHUB_RUN_NUMBER}). On your phone: download air-cricket.apk, open it and allow installing from this source." \
+            --target "$GITHUB_SHA"

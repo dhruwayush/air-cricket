@@ -80,10 +80,15 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 
 ## Modes
 
-- **Chase 36 off 2 overs** with 3 wickets
-- **Free nets**
+- **Daily challenge.** A new chase every day at midnight, and everyone in the world faces the same deliveries. The day's date seeds the random number generator, so every ball's line, length, pace, swing and spin, each over's bowler and the captain's plan come out identically on every device. The level is fixed at Pro. Only your first go counts: it's saved with your winning streak, and later goes are practice. **Share result** copies (or on a phone, shares) your score and a ball-by-ball line like `4 1 . 6 W 2 | 4 1 6 .`.
+- **Chase 36** off 2 overs with 3 wickets.
+- **Random chase.** A random target (6 to 24 balls, 1 to 3 wickets, and a bowling attack of pace, spin, mixed or death bowling) with a replay code. Replay the same code, or give it to a friend, and you both face the same balls.
+- **Super Over.** Six balls, two wickets, against a death-bowling attack of yorkers, bouncers and slower balls, with the field back. The opposition's score is set first; tie it and you go to another Super Over.
+- **Free nets** with no target.
 - Three bowling levels: Club, Pro, International
 - Right- or left-handed batting
+
+Your daily results, streak and wins in each mode are kept in the browser (`localStorage`).
 
 ## Working on it
 

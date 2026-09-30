@@ -109,7 +109,9 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .sheet h2{font-size:clamp(40px,10vw,58px)}
 .lede{margin:0 0 18px;color:var(--muted);line-height:1.5;max-width:58ch;font-size:16px}
 .keys{display:grid;gap:7px;margin-bottom:20px;padding:14px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02)}
-.krow{display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:center;font-size:15px}
+.krow{display:grid;grid-template-columns:minmax(104px,auto) 1fr;gap:10px;align-items:center;font-size:15px}
+.touch-help{display:none;margin:0 0 20px;font-size:15px;line-height:1.5;color:var(--chalk);max-width:60ch}
+@media (pointer:coarse){ .keys{display:none} .touch-help{display:block} }
 .kk{display:flex;gap:4px}
 .keys kbd,.krow kbd{font:600 13px/1 var(--f-ui);min-width:22px;text-align:center;color:var(--chalk);border:1px solid var(--line);border-bottom-width:3px;border-radius:5px;padding:4px 6px;background:rgba(255,255,255,.05)}
 .settings{display:grid;gap:12px;margin-bottom:20px}
@@ -129,6 +131,12 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
 .stat b{display:block;font-family:var(--f-display);font-weight:800;font-size:30px;color:var(--led);font-variant-numeric:tabular-nums}
 .stat span{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .end-line{margin:0 0 14px;color:var(--muted);font-size:16px}
+.end-note{margin:-6px 0 16px;color:var(--chalk);font-size:14px;line-height:1.45}
+.share-text{width:100%;box-sizing:border-box;margin:0 0 14px;padding:10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--chalk);font:500 14px/1.45 var(--f-ui);resize:none}
+.mode-info{margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.03);font-size:14px;line-height:1.45;color:var(--muted);max-width:60ch}
+.mode-info b{color:var(--chalk);font-weight:700}
+.mode-info .tag{display:inline-block;margin-right:6px;padding:2px 7px;border-radius:999px;background:var(--led);color:var(--led-ink);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+fieldset:disabled .seg label{opacity:.45;cursor:default}
 
 /* ---------- camera ---------- */
 .cam-panel{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:min(220px,36vw);background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;z-index:2}
@@ -254,12 +262,17 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
       <div class="krow"><span class="kk"><kbd>Q</kbd><kbd>E</kbd><kbd>R</kbd></span><span>Sweep, reverse sweep, scoop</span></div>
       <div class="krow"><span class="kk"><kbd>A</kbd><kbd>D</kbd></span><span>Step across before the ball arrives · <kbd>M</kbd> field map</span></div>
     </div>
+    <p class="touch-help">Tap a direction just before the ball reaches you: up to drive straight, the diagonals to drive or play fine, the sides to play square, the middle to block. <b>Loft</b> hits it in the air; <b>Sweep</b>, <b>Rev</b> and <b>Scoop</b> change the stroke; <b>Step</b> moves you across.</p>
     <div class="settings">
       <fieldset class="seg-wrap"><legend>Mode</legend><div class="seg">
-        <input type="radio" name="mode" id="mode-chase" value="chase" checked><label for="mode-chase">Chase 36 off 2 overs</label>
+        <input type="radio" name="mode" id="mode-daily" value="daily"><label for="mode-daily">Daily challenge</label>
+        <input type="radio" name="mode" id="mode-chase" value="chase" checked><label for="mode-chase">Chase 36</label>
+        <input type="radio" name="mode" id="mode-random" value="random"><label for="mode-random">Random chase</label>
+        <input type="radio" name="mode" id="mode-super" value="super"><label for="mode-super">Super Over</label>
         <input type="radio" name="mode" id="mode-nets" value="nets"><label for="mode-nets">Free nets</label>
-      </div></fieldset>
-      <fieldset><legend>Bowling level</legend><div class="seg">
+      </div>
+      <div class="mode-info" id="mode-info" aria-live="polite"></div></fieldset>
+      <fieldset id="level-set"><legend>Bowling level</legend><div class="seg">
         <input type="radio" name="level" id="level-club" value="club" checked><label for="level-club">Club</label>
         <input type="radio" name="level" id="level-pro" value="pro"><label for="level-pro">Pro</label>
         <input type="radio" name="level" id="level-intl" value="intl"><label for="level-intl">International</label>
@@ -313,10 +326,9 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
     <h2 id="end-title">Chase complete</h2>
     <p class="end-line" id="end-line"></p>
     <div class="end-stats" id="end-stats"></div>
-    <div class="actions">
-      <button class="btn primary" id="btn-again" type="button">Bat again</button>
-      <button class="btn" id="btn-settings" type="button">Change settings</button>
-    </div>
+    <p class="end-note" id="end-note" hidden></p>
+    <textarea class="share-text" id="share-text" rows="5" readonly hidden aria-label="Result to copy"></textarea>
+    <div class="actions" id="end-actions"></div>
   </div>
 </div>
 
@@ -345,7 +357,49 @@ const LEVELS = {
   pro:  { name: 'Pro',           pace: [122, 136], spin: [80, 90], W: 0.029 },
   intl: { name: 'International', pace: [138, 152], spin: [86, 96], W: 0.023 },
 };
-const CHASE = { target: 36, balls: 12, wkts: 3 };
+/* ---- what you're playing for ----
+   Seeded matches (daily, random, super over) draw every delivery from rng(seed, ball number), so the
+   same ball comes down for everyone no matter how they played the ones before it. */
+const DAY0 = Date.UTC(2026, 8, 30);                    // Daily #1 is 30 September 2026
+function hashStr(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function localDateKey(d) { d = d || new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function dailyNumber(key) { const [y, m, dd] = key.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, dd) - DAY0) / 86400000) + 1; }
+const BOWLING = { mixed: 'Pace and spin', pace: 'Pace attack', spin: 'Spin trap', death: 'Death bowling' };
+function makeMatch(kind, opts) {
+  opts = opts || {};
+  if (kind === 'nets') return { kind, label: 'Nets', target: null, balls: null, wkts: null, bowling: 'mixed', seed: null };
+  if (kind === 'super') {
+    const seed = opts.seed != null ? opts.seed : (Math.random() * 2147483647) >>> 0, R = rng(seed);
+    const theirs = [9, 11, 12, 13, 14, 15, 15, 16, 17, 18, 19, 21][(R() * 12) | 0];
+    return { kind, label: 'Super Over', target: theirs + 1, theirs, balls: 6, wkts: 2, bowling: 'death', seed, round: opts.round || 1 };
+  }
+  if (kind === 'random') {
+    const code = opts.code != null ? opts.code : 1000 + ((Math.random() * 899000) | 0);          // a short code you can replay
+    const seed = Math.imul(code, 2654435761) >>> 0, R = rng(seed);
+    const balls = [6, 9, 12, 12, 15, 18, 18, 24][(R() * 8) | 0];
+    const target = Math.max(6, Math.round(balls * (1.1 + R() * 1.7)));
+    const wkts = clamp(Math.round(balls / 6) + (R() < 0.5 ? 0 : 1), 1, 5);
+    const bowling = ['mixed', 'mixed', 'pace', 'spin'][(R() * 4) | 0];
+    return { kind, label: `Chase ${target}`, target, balls, wkts, bowling, seed, code };
+  }
+  if (kind === 'daily') {
+    const key = opts.key || localDateKey(), num = dailyNumber(key), seed = hashStr('air-cricket-daily-' + key), R = rng(seed);
+    const balls = R() < 0.6 ? 12 : 18, wkts = balls === 12 ? 2 : 3;
+    const target = Math.round(balls * (1.7 + R() * 0.8));
+    const bowling = ['mixed', 'pace', 'spin', 'mixed', 'death'][(R() * 5) | 0];
+    const practice = !!opts.practice || !!(loadRecords().daily || {})[key];     // only your first go counts
+    return { kind, label: `Daily #${num}`, key, num, target, balls, wkts, bowling, seed, level: 'pro', practice };
+  }
+  return { kind: 'chase', label: 'Chase 36', target: 36, balls: 12, wkts: 3, bowling: 'mixed', seed: null };
+}
+let match = makeMatch('chase');
+function ballRandom(i) { return match.seed != null ? rng((match.seed ^ Math.imul(i + 1, 0x9E3779B1)) >>> 0) : Math.random; }
+function overRandom(o) { return match.seed != null ? rng((match.seed ^ Math.imul(o + 7, 0x85EBCA77)) >>> 0) : Math.random; }
+function bowlerFor(o) {
+  if (match.bowling === 'pace' || match.bowling === 'death') return 'pace';
+  if (match.bowling === 'spin') return 'spin';
+  return (o + (match.seed != null ? match.seed & 1 : 0)) % 2 ? 'spin' : 'pace';
+}
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -863,9 +917,9 @@ function sectorOf(x, z) { const a = Math.atan2(x * state.hand, -(z - BAT_Z)) / D
 function sectorAngle(i) { return i * 45 - 180 + 22.5; }
 function situation() {
   const sinceWicket = state.balls - captain.lastWicket;
-  if (state.mode === 'chase') {
-    const need = CHASE.target - state.runs, left = Math.max(1, CHASE.balls - state.balls), rate = need / left;
-    if (sinceWicket <= 2 || CHASE.wkts - state.wkts <= 1) return 'attack';      // new batsman or last pair: go for the wicket
+  if (match.target != null) {
+    const need = match.target - state.runs, left = Math.max(1, match.balls - state.balls), rate = need / left;
+    if (sinceWicket <= 2 || match.wkts - state.wkts <= 1) return 'attack';      // new batsman or last pair: go for the wicket
     if (need <= 3) return 'ring';
     if (rate >= 2.4) return 'defend';
     if (rate <= 1.2) return 'attack';
@@ -880,6 +934,7 @@ function situation() {
 function presetFor(sit) {
   const pace = state.bowlerType === 'pace';
   if (sit === 'ring') return 'savingOne';
+  if (captain.plan === 'death') return 'paceDefence';
   if (pace && captain.plan === 'short' && sit !== 'defend') return 'shortBall';
   return (pace ? 'pace' : 'spin') + { attack: 'Attack', standard: 'Standard', defend: 'Defence' }[sit];
 }
@@ -1262,14 +1317,23 @@ function crossZ(path, zc) {
 /* ============================================================
    DELIVERY
    ============================================================ */
-function makeDelivery() {
+function makeDelivery(R) {
+  R = R || Math.random;
+  const rand = (a, b) => a + R() * (b - a);
   const lv = LEVELS[state.level], hand = state.hand;
   const type = state.bowlerType;
-  const kmh = Math.round(type === 'pace' ? rand(lv.pace[0], lv.pace[1]) : rand(lv.spin[0], lv.spin[1]));
-  const v = kmh / 3.6;
-  const r = Math.random();
+  let kmh = Math.round(type === 'pace' ? rand(lv.pace[0], lv.pace[1]) : rand(lv.spin[0], lv.spin[1]));
+  const r = R();
   let lenName, len;
-  if (type === 'pace') {
+  if (type === 'pace' && captain.plan === 'death') {
+    // death bowling: yorkers, wide bouncers and slower balls to mess with your timing
+    if (r < 0.3) { lenName = 'Yorker'; len = rand(1.0, 1.5); }
+    else if (r < 0.45) { lenName = 'Full'; len = rand(2.0, 3.2); }
+    else if (r < 0.62) { lenName = 'Slower ball'; len = rand(3.4, 5.4); kmh = Math.round(kmh * rand(0.7, 0.78)); }
+    else if (r < 0.75) { lenName = 'Good length'; len = rand(3.8, 6.0); }
+    else if (r < 0.85) { lenName = 'Short'; len = rand(6.9, 8.6); }
+    else { lenName = 'Bouncer'; len = rand(8.9, 10.6); }
+  } else if (type === 'pace') {
     // the captain's plan for the over shifts the lengths: a short-ball plan means bouncers
     const mix = captain.plan === 'short' ? [0.04, 0.16, 0.38, 0.68] : [0.08, 0.32, 0.72, 0.9];
     if (r < mix[0]) { lenName = 'Yorker'; len = rand(1.1, 1.6); }
@@ -1282,6 +1346,7 @@ function makeDelivery() {
     else if (r < 0.88) { lenName = 'Good length'; len = rand(3.2, 5.2); }
     else { lenName = 'Short'; len = rand(5.6, 7.0); }
   }
+  const v = kmh / 3.6;
   const lineX = hand * rand(-0.22, 0.42);
   const rx = RELEASE.x, ry = type === 'pace' ? RELEASE.y : RELEASE.y - 0.12, rz = RELEASE.z;
   const bz = -len;
@@ -2197,9 +2262,9 @@ function oversText(b) { return `${Math.floor(b / 6)}.${b % 6}`; }
 function updateHUD() {
   $('runs').textContent = state.runs; $('wkts').textContent = state.wkts;
   $('overs').textContent = oversText(state.balls);
-  if (state.mode === 'chase') {
-    const need = Math.max(0, CHASE.target - state.runs), left = CHASE.balls - state.balls;
-    $('mode-label').textContent = `Chase ${CHASE.target}`;
+  if (match.target != null) {
+    const need = Math.max(0, match.target - state.runs), left = match.balls - state.balls;
+    $('mode-label').textContent = match.label;
     $('need').textContent = need > 0 ? `Need ${need} off ${left}` : 'Target reached';
   } else {
     $('mode-label').textContent = 'Nets';
@@ -2285,11 +2350,18 @@ function readSettings() {
   state.hand = +document.querySelector('input[name="hand"]:checked').value;
   state.ctrl = document.querySelector('input[name="ctrl"]:checked').value;
 }
-function startInnings() {
+function setupOver(o) {
+  const R = overRandom(o);
+  state.bowlerType = bowlerFor(o);
+  state.spinTurn = R() < 0.5 ? 1 : -1;
+  captain.plan = match.bowling === 'death' ? 'death' : state.bowlerType === 'pace' && R() < (o === 0 ? 0.25 : 0.35) ? 'short' : 'normal';
+}
+function startInnings(m) {
   readSettings();
-  Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], foot: 0, over: 0, bowlerType: 'pace' });
-  state.spinTurn = Math.random() < 0.5 ? 1 : -1;
-  captain.plan = Math.random() < 0.25 ? 'short' : 'normal';
+  match = m || makeMatch(state.mode);
+  if (match.level) state.level = match.level;          // the daily is the same difficulty for everyone
+  Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], log: [], foot: 0, over: 0 });
+  setupOver(0);
   placeField();
   placeActors();
   layoutMeter(LEVELS[state.level].W);
@@ -2306,9 +2378,7 @@ function nextBall() {
   let newOver = false;
   if (overIdx !== state.over) {
     state.over = overIdx; state.strip = [];
-    state.bowlerType = overIdx % 2 ? 'spin' : 'pace';
-    state.spinTurn = Math.random() < 0.5 ? 1 : -1;
-    captain.plan = state.bowlerType === 'pace' && Math.random() < 0.35 ? 'short' : 'normal';
+    setupOver(overIdx);
     newOver = true;
   }
   phase = 'runup'; runupT = 0; swing = null; hitPath = null; event = null; deadInfo = null; audioStep = -1; audioBed = -1;
@@ -2325,11 +2395,12 @@ function nextBall() {
     nonA.play('backup', { loop: true, fade: 0.3 });
     bowlerA.play('run', { loop: true, fade: 0.1, speed: 1.45 });
   }
-  del = makeDelivery();
+  del = makeDelivery(ballRandom(state.balls));
   $('gun-k').textContent = `Over ${state.over + 1} · ${state.bowlerType === 'pace' ? 'Pace' : (state.spinTurn > 0 ? 'Off-spin' : 'Leg-spin')}`;
   $('gun-v').innerHTML = '— <small>km/h</small>'; $('gun-len').textContent = 'Running in';
   $('meter').classList.add('dim'); $('needle').hidden = true; $('meter-label').textContent = 'Timing'; $('meter-label').style.top = '50%';
-  if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
+  if (state.balls === 0 && match.kind !== 'chase' && match.kind !== 'nets') callout(match.label + (match.practice ? ' · practice' : ''), matchIntro(), 'c-quiet');
+  else if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
   else if (change) callout(change.main, change.sub, 'c-quiet');
   else if (newOver && captain.plan === 'short') callout('Short-ball plan', 'Expect bouncers this over', 'c-quiet');
   else clearCallout();
@@ -2345,6 +2416,7 @@ function finishBall(runs, wicket, headline, sub, cls) {
   if (runs === 4) state.fours++; if (runs === 6) state.sixes++;
   if (!wicket && runs === 0) state.dots++;
   state.strip.push(wicket ? 'W' : runs);
+  (state.log = state.log || []).push(wicket ? 'W' : runs);
   state.over1Hint = false;
   const endAt = event && event.x != null && event.type !== 'body' ? event : null;
   captainNotes(runs, wicket, endAt ? endAt.x : null, endAt ? endAt.z : null);
@@ -2357,31 +2429,124 @@ function finishBall(runs, wicket, headline, sub, cls) {
     postUntil = Math.max(postUntil, hitWall + event.t + (event.type === 'drop' ? 3.2 : 1.9));
 }
 function inningsOver() {
-  if (state.mode !== 'chase') return null;
-  if (state.runs >= CHASE.target) return 'won';
-  if (state.wkts >= CHASE.wkts || state.balls >= CHASE.balls) return state.runs === CHASE.target - 1 ? 'tie' : 'lost';
+  if (match.target == null) return null;
+  if (state.runs >= match.target) return 'won';
+  if (state.wkts >= match.wkts || state.balls >= match.balls) return state.runs === match.target - 1 ? 'tie' : 'lost';
   return null;
+}
+function plural(n, w) { return `${n} ${w}${n === 1 ? '' : 's'}`; }
+function matchTerms(m) { return `${m.target} to win off ${plural(m.balls, 'ball')}, ${plural(m.wkts, 'wicket')} · ${BOWLING[m.bowling]}`; }
+function matchIntro() {
+  if (match.kind === 'super') return `They made ${match.theirs}. ${match.target} to win off 6 balls, 2 wickets${match.round > 1 ? ` · Super Over ${match.round}` : ''}`;
+  return matchTerms(match);
+}
+
+/* ---- records kept on this device ---- */
+function loadRecords() { try { return JSON.parse(localStorage.getItem('ac-records') || '{}') || {}; } catch (_) { return {}; } }
+function saveRecords(r) { try { localStorage.setItem('ac-records', JSON.stringify(r)); } catch (_) {} }
+function dailyStreak(rec) {
+  const days = (rec.daily || {}); let streak = 0;
+  const d = new Date();
+  if (!days[localDateKey(d)]) d.setDate(d.getDate() - 1);          // today not played yet: count up to yesterday
+  for (;;) { const r = days[localDateKey(d)]; if (!r || !r.won) break; streak++; d.setDate(d.getDate() - 1); }
+  return streak;
+}
+function recordResult(res) {
+  const rec = loadRecords();
+  if (match.kind === 'daily') {
+    rec.daily = rec.daily || {};
+    if (!rec.daily[match.key] && !match.practice)
+      rec.daily[match.key] = { runs: state.runs, wkts: state.wkts, balls: state.balls, won: res === 'won', tie: res === 'tie', log: state.log.join(' '), target: match.target };
+  } else if (match.kind !== 'nets') {
+    const k = match.kind; rec[k] = rec[k] || { played: 0, won: 0 };
+    rec[k].played++; if (res === 'won') rec[k].won++;
+  }
+  saveRecords(rec);
+  return rec;
+}
+function shareText(r) {
+  const url = /^https?:/.test(location.protocol) && !/claude\.ai|claudeusercontent/.test(location.host) ? location.origin + location.pathname : 'https://dhruwayush.github.io/air-cricket/';
+  const overs = []; const log = r.log.split(' ');
+  for (let i = 0; i < log.length; i += 6) overs.push(log.slice(i, i + 6).map(x => x === '0' ? '.' : x).join(' '));
+  const verdict = r.won ? `Won with ${plural(match.balls - r.balls, 'ball')} to spare` : r.tie ? 'Tied' : `${match.target - r.runs} short`;
+  return `Air Cricket · Daily #${match.num}\n${match.target} to win off ${match.balls} · ${BOWLING[match.bowling]}\n${r.runs}/${r.wkts} off ${plural(r.balls, 'ball')} · ${verdict}\n${overs.join(' | ')}\n${url}`;
+}
+async function shareResult(btn, text) {
+  try {
+    if (navigator.share && matchMedia('(pointer:coarse)').matches) { await navigator.share({ text }); return; }
+  } catch (_) { /* fall through to copying */ }
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+  catch (_) { const t = $('share-text'); t.hidden = false; t.value = text; t.focus(); t.select(); btn.textContent = 'Select and copy'; }
 }
 function showEnd(res) {
   phase = 'over';
-  const need = CHASE.target - state.runs, left = CHASE.balls - state.balls;
-  $('end-eyebrow').textContent = `Chase of ${CHASE.target} · ${LEVELS[state.level].name}`;
-  $('end-title').textContent = res === 'won' ? 'Chase complete' : res === 'tie' ? 'Scores level' : 'Fell short';
+  const m = match, need = m.target - state.runs, left = m.balls - state.balls, wLeft = m.wkts - state.wkts;
+  const rec = recordResult(res);
+  const sup = m.kind === 'super';
+  $('end-eyebrow').textContent = `${m.label}${sup && m.round > 1 ? ' ' + m.round : ''} · ${LEVELS[state.level].name} · ${BOWLING[m.bowling]}`;
+  $('end-title').textContent = res === 'won' ? (sup ? 'Super Over won' : 'Chase complete') : res === 'tie' ? (sup ? 'Super Over tied' : 'Scores level') : 'Fell short';
   $('end-line').textContent = res === 'won'
-    ? `Won with ${left} ball${left === 1 ? '' : 's'} to spare and ${CHASE.wkts - state.wkts} wicket${CHASE.wkts - state.wkts === 1 ? '' : 's'} in hand.`
-    : res === 'tie' ? 'One run short of the win. It goes down as a tie.'
-    : `${need} run${need === 1 ? '' : 's'} short${state.wkts >= CHASE.wkts ? ', all out' : ''}.`;
+    ? `Won with ${plural(left, 'ball')} to spare and ${plural(wLeft, 'wicket')} in hand.`
+    : res === 'tie' ? (sup ? `Level on ${state.runs}. Another Super Over decides it.` : 'One run short of the win. It goes down as a tie.')
+    : `${plural(need, 'run')} short${state.wkts >= m.wkts ? ', all out' : ''}.`;
   const sr = state.balls ? Math.round(state.runs / state.balls * 100) : 0;
   $('end-stats').innerHTML = [[`${state.runs}/${state.wkts}`, 'Score'], [oversText(state.balls), 'Overs'], [`${state.fours} · ${state.sixes}`, '4s · 6s'], [sr, 'Strike rate']]
     .map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  $('share-text').hidden = true;
+  const note = $('end-note'); note.hidden = true;
+  const acts = $('end-actions'); acts.textContent = '';
+  const btn = (label, fn, primary) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', () => { sound.unlock(); fn(b); }); acts.appendChild(b); return b; };
+  if (m.kind === 'daily') {
+    const today = (rec.daily || {})[m.key], streak = dailyStreak(rec);
+    note.hidden = false;
+    note.textContent = m.practice
+      ? `Practice run. Your result for Daily #${m.num} stays ${today.runs}/${today.wkts}${today.won ? ', won' : ''}.`
+      : `Daily #${m.num} saved.${streak ? ` Winning streak: ${plural(streak, 'day')}.` : ''} A new challenge comes at midnight.`;
+    btn('Share result', b => shareResult(b, shareText(today)), true);
+    btn('Practice again', () => startInnings(makeMatch('daily', { key: m.key, practice: true })));
+  } else if (sup) {
+    const r = rec.super || { played: 0, won: 0 };
+    note.hidden = false; note.textContent = `Super Overs won on this device: ${r.won} of ${r.played}.`;
+    if (res === 'tie') btn('Next Super Over', () => startInnings(makeMatch('super', { round: m.round + 1 })), true);
+    else btn('Another Super Over', () => startInnings(makeMatch('super')), true);
+  } else if (m.kind === 'random') {
+    const r = rec.random || { played: 0, won: 0 };
+    note.hidden = false; note.textContent = `Chase code ${m.code}. Random chases won on this device: ${r.won} of ${r.played}.`;
+    btn('New target', () => startInnings(makeMatch('random')), true);
+    btn(`Replay ${m.code}`, () => startInnings(makeMatch('random', { code: m.code })));
+  } else btn('Bat again', () => startInnings(makeMatch(m.kind)), true);
+  btn('Change settings', () => { phase = 'over'; openMenu(false); });
   $('end').hidden = false;
-  setTimeout(() => $('btn-again').focus(), 50);
+  setTimeout(() => acts.firstChild && acts.firstChild.focus(), 50);
 }
+/* the mode picker explains the selected mode, including today's daily and how you did */
+let levelBeforeDaily = null;
+function syncModeInfo() {
+  const kind = document.querySelector('input[name="mode"]:checked').value, info = $('mode-info');
+  $('level-set').disabled = kind === 'daily';
+  // show the daily's fixed level in the picker, and put your own choice back afterwards
+  if (kind === 'daily' && levelBeforeDaily == null) { levelBeforeDaily = document.querySelector('input[name="level"]:checked').value; $('level-pro').checked = true; }
+  else if (kind !== 'daily' && levelBeforeDaily != null) { $('level-' + levelBeforeDaily).checked = true; levelBeforeDaily = null; }
+  if (kind === 'daily') {
+    const d = makeMatch('daily'), rec = loadRecords(), today = (rec.daily || {})[d.key], streak = dailyStreak(rec);
+    info.innerHTML = `<span class="tag">Daily #${d.num}</span> Everyone faces the same balls today. <b>${matchTerms(d)}</b>. Level is fixed at Pro. `
+      + (today ? `Your result: <b>${today.runs}/${today.wkts}${today.won ? ', won' : today.tie ? ', tied' : ', short'}</b>; play again for practice.` : 'Your first go counts.')
+      + (streak ? ` Winning streak: <b>${plural(streak, 'day')}</b>.` : '');
+  } else info.innerHTML = {
+    chase: '<b>36 to win off 2 overs</b> with 3 wickets. An over of pace, then an over of spin.',
+    random: 'A <b>new target every time</b>, from a one-over dash to a four-over chase, against pace, spin or both. Each one has a code you can replay.',
+    super: '<b>One over, two wickets</b> against a death bowler: yorkers, bouncers and slower balls. Tie it and you go again.',
+    nets: '<b>No target.</b> Face pace and spin and try your shots.',
+  }[kind];
+}
+document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener('change', syncModeInfo));
+
 function openMenu(midGame) {
   if (phase === 'menu') return;
   phase = 'menu';
   $('btn-resume').hidden = !midGame || state.balls === 0 && !del;
   $('end').hidden = true; $('menu').hidden = false;
+  syncModeInfo();
   setTimeout(() => $('btn-start').focus(), 30);
 }
 
@@ -2448,8 +2613,7 @@ $('btn-menu').addEventListener('click', e => { e.currentTarget.blur(); openMenu(
 function syncSoundBtn() { const b = $('btn-sound'); b.textContent = sound.enabled ? 'Sound' : 'Muted'; b.setAttribute('aria-pressed', String(sound.enabled)); b.setAttribute('aria-label', sound.enabled ? 'Sound on, tap to mute' : 'Sound muted, tap to turn on'); }
 $('btn-sound').addEventListener('click', e => { e.currentTarget.blur(); sound.unlock(); sound.setEnabled(!sound.enabled); syncSoundBtn(); });
 syncSoundBtn();
-$('btn-again').addEventListener('click', () => { sound.unlock(); startInnings(); });
-$('btn-settings').addEventListener('click', () => { phase = 'over'; openMenu(false); });
+
 
 /* ============================================================
    MAIN LOOP
@@ -2763,14 +2927,14 @@ function tick(ms) {
 
 /* test hook, only with ?debug in the address */
 if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, get swing() { return swing; }, get event() { return event; },
-  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound };
+  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, shareText, loadRecords, get match() { return match; } };
 
 /* boot: idle scene behind the menu while the players load */
 state.hand = 1;
 placeField();
 ballPos.set(RELEASE.x, RELEASE.y, RELEASE.z);
 layoutMeter(LEVELS.club.W);
-updateHUD(); updateChips(); syncCamSettings();
+updateHUD(); updateChips(); syncCamSettings(); syncModeInfo();
 resize();
 requestAnimationFrame(tick);
 $('btn-start').disabled = true; const startLabel = $('btn-start').textContent; $('btn-start').textContent = 'Loading players…';

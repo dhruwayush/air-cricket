@@ -31,7 +31,7 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .board-top{display:flex;justify-content:space-between;gap:14px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .score{font-family:var(--f-display);font-weight:900;font-size:48px;line-height:1;color:var(--led);font-variant-numeric:tabular-nums;letter-spacing:.01em;margin-top:4px;text-shadow:0 0 18px rgba(255,182,39,.35)}
 .score .slash{color:var(--muted);font-weight:700;margin:0 2px}
-.board-row{display:flex;justify-content:space-between;gap:14px;font-size:14px;color:var(--chalk);margin-top:4px;font-variant-numeric:tabular-nums}
+.board-row{display:flex;justify-content:space-between;gap:14px;font-size:14px;white-space:nowrap;color:var(--chalk);margin-top:4px;font-variant-numeric:tabular-nums}
 .board-row b{font-weight:700;color:var(--led)}
 .strip{display:flex;gap:5px;margin-top:9px;min-height:24px}
 .strip span{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:14px;border:1px solid var(--line);color:var(--chalk);font-variant-numeric:tabular-nums}
@@ -48,6 +48,8 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 .gun-len{font-size:13px;color:var(--chalk)}
 .menu-btn{pointer-events:auto;font:600 13px/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 12px;cursor:pointer}
 .menu-btn:hover{border-color:var(--led)}
+.btn-row{display:flex;gap:6px}
+#btn-sound[aria-pressed="false"]{color:var(--muted);text-decoration:line-through}
 
 .callout{position:fixed;left:16px;right:16px;top:30%;text-align:center;pointer-events:none}
 .callout-main{font-family:var(--f-display);font-weight:900;font-size:clamp(46px,11vw,96px);line-height:.95;letter-spacing:.02em;text-transform:uppercase;text-shadow:0 4px 30px rgba(0,0,0,.55)}
@@ -61,33 +63,36 @@ body{margin:0;background:var(--night);color:var(--chalk);font-family:var(--f-ui)
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 
 .bottom{position:fixed;left:0;right:0;bottom:0;padding:0 16px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
-.meter{width:min(340px,100%);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px 9px;transition:opacity .3s}
-.meter.dim{opacity:.45}
-.meter-head{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
-.meter-head b{color:var(--chalk);letter-spacing:.04em}
-.track{position:relative;height:10px;margin-top:7px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
-.zone{position:absolute;top:0;bottom:0}
+/* timing meter: a slim vertical gauge on the left edge, early at the top, late at the bottom */
+.vmeter{position:fixed;left:calc(env(safe-area-inset-left,0px) + 10px);top:38vh;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;transition:opacity .3s;z-index:1}
+.vmeter.dim{opacity:.5}
+.vm-end{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:3px 5px}
+.track{position:relative;width:12px;height:min(27vh,230px);border-radius:6px;background:rgba(6,19,24,.72);border:1px solid var(--line);overflow:visible}
+.zone{position:absolute;left:0;right:0;border-radius:3px}
+.vm-label{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);white-space:nowrap;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px 7px;transition:top .25s ease-out}
+.vmeter.dim .vm-label{opacity:0}
 .z-ok{background:rgba(255,182,39,.18)}
 .z-good{background:rgba(255,182,39,.38)}
 .z-perfect{background:var(--led)}
-.needle{position:absolute;top:-3px;width:3px;height:16px;margin-left:-1.5px;background:var(--chalk);border-radius:2px;box-shadow:0 0 6px rgba(255,255,255,.8);transition:left .25s ease-out}
+.needle{position:absolute;left:-5px;right:-5px;height:3px;margin-top:-1.5px;background:var(--chalk);border-radius:2px;box-shadow:0 0 6px rgba(255,255,255,.8);transition:top .25s ease-out}
 .needle[hidden]{display:none}
-.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-.chip{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.chip{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 7px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted)}
 .chip.on{background:var(--led);color:var(--led-ink);border-color:transparent}
-.hint{font-size:13px;color:var(--muted);text-align:center}
+.hint{font-size:13px;color:var(--chalk);text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;max-width:100%}
 .hint kbd{font:600 12px/1 var(--f-ui);color:var(--chalk);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:2px 5px;background:rgba(255,255,255,.05)}
 
 /* touch pad (phones / tablets) */
 .pad{display:none;pointer-events:auto;width:min(440px,100%);gap:6px;flex-direction:column}
-.pad button{font:700 13px/1 var(--f-ui);letter-spacing:.05em;text-transform:uppercase;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 2px;touch-action:none;min-width:0}
+.pad button{font:700 12px/1 var(--f-ui);letter-spacing:.05em;text-transform:uppercase;color:var(--chalk);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 2px;touch-action:none;min-width:0}
 .pad-top{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
 .pad .shot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.pad .shot button{padding:16px 4px;font-size:14px;background:rgba(255,182,39,.16);border-color:rgba(255,182,39,.5)}
+.pad .shot button{padding:13px 4px;font-size:13px;background:rgba(18,30,22,.55);border-color:rgba(255,182,39,.55);backdrop-filter:blur(2px)}
 .pad .shot button.blk{background:var(--panel);border-color:var(--line)}
 .pad button.on{background:var(--led);color:var(--led-ink)}
 .pad button:active{transform:translateY(1px)}
 @media (pointer:coarse){ .pad{display:flex} .hint{display:none} }
+@media (max-aspect-ratio:3/4){ .vmeter{top:40vh} .track{height:min(22vh,230px)} }
 .fieldmap{pointer-events:auto;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 6px 5px;color:var(--chalk);font:inherit}
 .fieldmap canvas{width:120px;height:120px;display:block}
 .fieldmap.min canvas{display:none}
@@ -154,9 +159,15 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
   .gun-v{font-size:20px}
   .krow{grid-template-columns:88px 1fr}
   .end-stats{grid-template-columns:repeat(2,1fr)}
-  .callout{top:24%}
+  .callout{top:max(29.5%, 258px)}
+  .callout-main{font-size:clamp(26px,9vw,46px)}
+  .board-top{white-space:nowrap;gap:10px}
+  .callout-sub{font-size:14px}
+  .pad button{font-size:11px;letter-spacing:.02em;white-space:nowrap}
+  .pad .shot button{font-size:12px;white-space:nowrap}
+  .board-row{gap:10px;font-size:13px}
 }
-@media (prefers-reduced-motion:reduce){ .callout.pop .callout-main{animation:none} .needle{transition:none} }
+@media (prefers-reduced-motion:reduce){ .callout.pop .callout-main{animation:none} .needle,.vm-label{transition:none} }
 </style>
 
 <div id="stage"></div>
@@ -167,6 +178,10 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
     <div class="score"><span id="runs">0</span><span class="slash">/</span><span id="wkts">0</span></div>
     <div class="board-row"><span>Overs <b id="overs">0.0</b></span><span id="need">Need 36 off 12</span></div>
     <div class="strip" id="strip"></div>
+    <div class="chips">
+      <span class="chip" id="chip-guard">Guard · Middle</span>
+      <span class="chip" id="chip-loft">Aerial off</span>
+    </div>
   </div>
   <div class="right-col">
     <div class="gun">
@@ -178,26 +193,28 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
       <canvas id="fieldmap" width="120" height="120"></canvas>
       <span class="fm-name" id="fm-name">Field</span>
     </button>
-    <button class="menu-btn" id="btn-menu" type="button">Menu</button>
+    <div class="btn-row">
+      <button class="menu-btn" id="btn-sound" type="button" aria-pressed="true">Sound</button>
+      <button class="menu-btn" id="btn-menu" type="button">Menu</button>
+    </div>
   </div>
+</div>
+
+<div class="vmeter dim" id="meter" aria-label="Shot timing">
+  <span class="vm-end">Early</span>
+  <div class="track" id="track">
+    <div class="zone z-ok" id="z-ok"></div>
+    <div class="zone z-good" id="z-good"></div>
+    <div class="zone z-perfect" id="z-perfect"></div>
+    <div class="needle" id="needle" hidden></div>
+    <b class="vm-label" id="meter-label">Timing</b>
+  </div>
+  <span class="vm-end">Late</span>
 </div>
 
 <div class="callout" id="callout"><div class="callout-main" id="callout-main"></div><div class="callout-sub" id="callout-sub"></div></div>
 
 <div class="bottom">
-  <div class="meter dim" id="meter">
-    <div class="meter-head"><span>Early</span><b id="meter-label">Timing</b><span>Late</span></div>
-    <div class="track" id="track">
-      <div class="zone z-ok" id="z-ok"></div>
-      <div class="zone z-good" id="z-good"></div>
-      <div class="zone z-perfect" id="z-perfect"></div>
-      <div class="needle" id="needle" hidden></div>
-    </div>
-  </div>
-  <div class="chips">
-    <span class="chip" id="chip-guard">Guard · Middle</span>
-    <span class="chip" id="chip-loft">Aerial off</span>
-  </div>
   <div class="hint">Arrows aim · <kbd>↑</kbd>+<kbd>←</kbd> drives · <kbd>↓</kbd>+<kbd>→</kbd> fine · <kbd>↓</kbd> block · <kbd>Shift</kbd> loft · <kbd>Q</kbd> sweep <kbd>E</kbd> reverse <kbd>R</kbd> scoop · <kbd>A</kbd>/<kbd>D</kbd> step · <kbd>M</kbd> field</div>
   <div class="pad" id="pad">
     <div class="pad-top">
@@ -351,14 +368,28 @@ scene.background = new THREE.Color(0x050c10);
 scene.fog = new THREE.Fog(0x0b1a21, 120, 330);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 1200);
 
+/* Frame the picture in the space the controls leave free: on a phone the touch pad covers the bottom,
+   so the view's centre is lifted and the field of view set for that free area (about 27° across in
+   portrait, never under 36° tall). */
+const view = { padOn: false, bottom: 0 };
 function resize() {
   const w = stage.clientWidth || window.innerWidth, h = stage.clientHeight || window.innerHeight;
   renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.fov = w / h < 0.8 ? 52 : 36;
+  const pad = document.getElementById('pad');
+  view.padOn = !!pad && getComputedStyle(pad).display !== 'none';
+  const bottom = view.padOn ? pad.getBoundingClientRect().height + 22 : 0;
+  const top = view.padOn ? Math.min(h * 0.1, 90) : 0;
+  const free = Math.max(160, h - bottom - top), shift = (bottom - top) / 2;
+  view.bottom = bottom;
+  const vFree = Math.max(36, 2 * Math.atan(Math.tan(13.5 * DEG) * free / w) / DEG);
+  const full = h + 2 * Math.abs(shift);
+  camera.fov = 2 * Math.atan(Math.tan(vFree * DEG / 2) * full / free) / DEG;
+  camera.aspect = w / full;
+  if (Math.abs(shift) > 1) camera.setViewOffset(w, full, 0, shift > 0 ? 2 * shift : 0, w, h); else camera.clearViewOffset();
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 250));
 
 scene.add(new THREE.HemisphereLight(0xd3e2ff, 0x1d3a22, 0.78));
 const sun = new THREE.DirectionalLight(0xfff1dc, 0.72); sun.position.set(30, 60, 25); scene.add(sun);
@@ -422,19 +453,134 @@ const adTex = canvasTex(2048, 64, (g, w, h) => {
 const hoarding = new THREE.Mesh(new THREE.CylinderGeometry(BOUNDARY_R + 15, BOUNDARY_R + 15, 1.2, 128, 1, true), new THREE.MeshBasicMaterial({ map: adTex, side: THREE.BackSide }));
 hoarding.position.set(0, 0.6, PITCH_C); scene.add(hoarding);
 
-/* stands + crowd */
-const crowdTex = canvasTex(1024, 256, (g, w, h) => {
-  g.fillStyle = '#0c1b22'; g.fillRect(0, 0, w, h);
-  const r = rng(21), cols = ['#39505a', '#5a6d73', '#7b6a58', '#b58b4a', '#2f6fb0', '#c9c2b0', '#8a3e3a', '#465c4c'];
-  for (let y = 6; y < h; y += 9) for (let x = 2; x < w; x += 6) {
-    if (r() < 0.12) continue;
-    g.fillStyle = cols[(r() * cols.length) | 0]; g.globalAlpha = 0.55 + r() * 0.45;
-    g.fillRect(x + r() * 2, y + r() * 2, 4, 5);
+/* stands + crowd: spectators drawn seat by seat, animated in a shader so they bob, jump and do the wave */
+const CROWD = { cols: 116, rows: 32, reps: 9 };
+const crowdTex = canvasTex(2048, 512, (g, w, h) => {
+  const r = rng(21), cw = w / CROWD.cols, ch = h / CROWD.rows;
+  const shirts = ['#f0a431', '#f0a431', '#f4b84a', '#3462d6', '#3462d6', '#2c55c0', '#f2f2ee', '#e9e6dc', '#c8453c', '#2e8b57', '#6b4fa0', '#1b1f24', '#d86aa0', '#3aa6c8', '#8a8f96'];
+  const skins = ['#8d5a3c', '#a0694a', '#6e4630', '#c28a62', '#5b3a28', '#b27b58'];
+  g.fillStyle = '#10181d'; g.fillRect(0, 0, w, h);
+  for (let row = 0; row < CROWD.rows; row++) {
+    const y0 = row * ch;
+    g.fillStyle = row % 2 ? '#141e24' : '#172229'; g.fillRect(0, y0, w, ch);                // tier
+    g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(0, y0 + ch - 1.5, w, 1.5);             // step edge
+    for (let col = 0; col < CROWD.cols; col++) {
+      const x0 = col * cw, cx = x0 + cw / 2, v = r();
+      if (v < 0.07) { g.fillStyle = r() < 0.5 ? '#5a1f22' : '#1f3558'; g.fillRect(x0 + cw * 0.18, y0 + ch * 0.45, cw * 0.64, ch * 0.5); continue; }   // empty seat
+      const shirt = shirts[(r() * shirts.length) | 0], skin = skins[(r() * skins.length) | 0];
+      g.fillStyle = shirt;
+      g.beginPath(); g.moveTo(cx - cw * 0.34, y0 + ch); g.lineTo(cx - cw * 0.28, y0 + ch * 0.5); g.lineTo(cx + cw * 0.28, y0 + ch * 0.5); g.lineTo(cx + cw * 0.34, y0 + ch); g.fill();
+      if (v > 0.84) {                                           // arms up
+        g.strokeStyle = skin; g.lineWidth = Math.max(1.4, cw * 0.1);
+        g.beginPath(); g.moveTo(cx - cw * 0.25, y0 + ch * 0.55); g.lineTo(cx - cw * 0.38, y0 + ch * 0.05); g.moveTo(cx + cw * 0.25, y0 + ch * 0.55); g.lineTo(cx + cw * 0.38, y0 + ch * 0.05); g.stroke();
+      }
+      g.fillStyle = skin; g.beginPath(); g.arc(cx, y0 + ch * 0.36, cw * 0.19, 0, Math.PI * 2); g.fill();
+      if (r() < 0.25) { g.fillStyle = r() < 0.5 ? '#1b1f24' : shirt; g.beginPath(); g.arc(cx, y0 + ch * 0.3, cw * 0.2, Math.PI, 0); g.fill(); }   // hair or cap
+      if (v > 0.955) {                                          // a small flag held up
+        g.fillStyle = r() < 0.5 ? '#f0a431' : '#3462d6'; g.fillRect(cx - cw * 0.05, y0 - ch * 0.35, cw * 0.55, ch * 0.32);
+        g.fillStyle = '#d8d8d0'; g.fillRect(cx - cw * 0.07, y0 - ch * 0.35, 1.2, ch * 0.75);
+      }
+    }
   }
-  g.globalAlpha = 1;
-}, [9, 1]);
-const stands = new THREE.Mesh(new THREE.CylinderGeometry(118, 80, 30, 72, 1, true), new THREE.MeshLambertMaterial({ map: crowdTex, side: THREE.BackSide }));
+}, null);
+crowdTex.wrapS = THREE.RepeatWrapping;
+const standsMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: { map: { value: crowdTex }, time: { value: 0 }, excite: { value: 0.12 }, waveC: { value: 0 }, waveAmp: { value: 0 },
+              cols: { value: CROWD.cols }, rows: { value: CROWD.rows }, reps: { value: CROWD.reps } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D map; uniform float time, excite, waveC, waveAmp, cols, rows, reps; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main(){
+      vec2 uv = vec2(vUv.x * reps, vUv.y);
+      vec2 cell = floor(vec2(uv.x * cols, uv.y * rows));
+      float h = hash(cell);
+      float ang = vUv.x * 6.2831853, dw = atan(sin(ang - waveC), cos(ang - waveC));
+      float wave = waveAmp * exp(-dw * dw * 22.0);
+      float jump = max(0.0, sin(time * (5.5 + 4.0 * h) + h * 40.0));
+      float sway = sin(time * 1.3 + h * 20.0) * 0.08;
+      float amt = clamp(excite * (0.25 + 0.75 * step(0.3, h)), 0.0, 1.0) * jump + wave + sway * (0.3 + excite);
+      uv.y -= amt * 0.42 / rows;
+      vec3 c = texture2D(map, uv).rgb;
+      float light = mix(1.05, 0.55, vUv.y) * (0.9 + 0.25 * wave);
+      gl_FragColor = vec4(c * light, 1.0);
+    }`,
+});
+const stands = new THREE.Mesh(new THREE.CylinderGeometry(118, 80, 30, 96, 1, true), standsMat);
 stands.position.set(0, 15, PITCH_C); scene.add(stands);
+
+/* camera flashes popping in the stands */
+const FLASH_N = 420;
+const flashGeo = new THREE.BufferGeometry();
+{
+  const pos = new Float32Array(FLASH_N * 3), seed = new Float32Array(FLASH_N), r = rng(77);
+  for (let i = 0; i < FLASH_N; i++) {
+    const u = r(), v = 0.06 + r() * 0.88, rad = lerp(80, 118, v) - 0.6, th = u * Math.PI * 2;
+    pos[i * 3] = rad * Math.sin(th); pos[i * 3 + 1] = v * 30; pos[i * 3 + 2] = PITCH_C + rad * Math.cos(th); seed[i] = r();
+  }
+  flashGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  flashGeo.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
+}
+const flashMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { clock: { value: 0 }, px: { value: 1 } },
+  vertexShader: `attribute float seed; uniform float clock, px; varying float vA;
+    void main(){
+      float ph = fract(clock * (0.05 + 0.1 * fract(seed * 7.31)) + seed);
+      vA = smoothstep(0.0, 0.003, ph) * (1.0 - smoothstep(0.003, 0.02, ph));
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = vA * px * 900.0 / -mv.z;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(1.0, 0.98, 0.92, vA * smoothstep(0.5, 0.0, d)); }`,
+});
+const flashes = new THREE.Points(flashGeo, flashMat); flashes.frustumCulled = false; scene.add(flashes);
+
+/* flags waving along the front rows */
+const flags = [];
+{
+  const designs = [['#f0a431', '#1c2d59'], ['#3462d6', '#f2f2ee'], ['#f0a431', '#f2f2ee'], ['#3462d6', '#16244d'], ['#c8453c', '#f2f2ee']];
+  const r = rng(5);
+  for (let i = 0; i < 20; i++) {
+    const [a, b] = designs[i % designs.length];
+    const tex = canvasTex(64, 40, (g, w, h) => { g.fillStyle = a; g.fillRect(0, 0, w, h); g.fillStyle = b; g.fillRect(0, h * 0.38, w, h * 0.24); });
+    const geo = new THREE.PlaneGeometry(3.2, 1.9, 12, 1); geo.translate(1.6, 0, 0);
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, color: 0xd8d8d8 }));
+    const th = (i / 20) * Math.PI * 2 + r() * 0.2, rad = lerp(80, 118, 0.1) - 1.5, y = 3.2 + r() * 2;
+    m.position.set(rad * Math.sin(th), y, PITCH_C + rad * Math.cos(th));
+    m.lookAt(0, y, PITCH_C);
+    scene.add(m);
+    const base = Float32Array.from(geo.attributes.position.array);
+    flags.push({ m, base, y, phase: r() * 6.28 });
+  }
+}
+/* how worked up the crowd is: drives the jumping, the wave, flashes and flag waving */
+const crowdFx = {
+  excite: 0.12, hold: 0, clock: 0, time: 0, wave: 0, waveC: 0, waveLeft: 0,
+  pulse(level, hold) { this.excite = Math.max(this.excite, level); this.hold = Math.max(this.hold, hold || 1.5); },
+  startWave() { this.wave = 1; this.waveLeft = 7; this.waveC = Math.random() * Math.PI * 2; },
+  update(dt) {
+    this.time += dt;
+    if (this.hold > 0) this.hold -= dt; else this.excite = lerp(this.excite, 0.12, 1 - Math.exp(-dt * 0.8));
+    if (this.waveLeft > 0) { this.waveLeft -= dt; this.waveC += dt * 1.5; } else this.wave = lerp(this.wave, 0, 1 - Math.exp(-dt * 2));
+    this.clock += dt * (1 + this.excite * 9);
+    standsMat.uniforms.time.value = this.time; standsMat.uniforms.excite.value = this.excite;
+    standsMat.uniforms.waveC.value = this.waveC; standsMat.uniforms.waveAmp.value = this.wave;
+    flashMat.uniforms.clock.value = this.clock; flashMat.uniforms.px.value = renderer.getPixelRatio();
+    const speed = 5 + this.excite * 8, amp = 0.14 + this.excite * 0.3;
+    flags.forEach(f => {
+      const pos = f.m.geometry.attributes.position, arr = pos.array;
+      for (let i = 0; i < arr.length; i += 3) {
+        const x = f.base[i], k = x / 3.2;
+        arr[i + 2] = Math.sin(x * 2.1 - this.time * speed + f.phase) * amp * k;
+        arr[i + 1] = f.base[i + 1] + Math.sin(this.time * speed * 0.5 + f.phase) * 0.05 * k;
+      }
+      pos.needsUpdate = true;
+      f.m.position.y = f.y + Math.max(0, Math.sin(this.time * 6 + f.phase)) * 0.35 * Math.max(0, this.excite - 0.3);   // flags pumped when it's loud
+    });
+  },
+};
 const roof = new THREE.Mesh(new THREE.CylinderGeometry(126, 118, 3, 72, 1, true), new THREE.MeshLambertMaterial({ color: 0x14242b, side: THREE.DoubleSide }));
 roof.position.set(0, 31, PITCH_C); scene.add(roof);
 
@@ -592,6 +738,9 @@ class Actor {
     this.model.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
     const gear = this.model.getObjectByName('keeper_gear');          // pads + gauntlets, keeper only
     if (gear) gear.visible = !!(opts && opts.keeper);
+    this.opacity = 1;
+    if (opts && opts.fade)                                             // own materials so this one can fade out
+      this.model.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone(); });
     this.mirror.add(this.model); this.root.add(this.mirror); scene.add(this.root);
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.55, depthWrite: false }));
     this.shadow.rotation.x = -Math.PI / 2; this.shadow.position.y = 0.01; scene.add(this.shadow);
@@ -601,6 +750,15 @@ class Actor {
     this.bones = {};
   }
   action(n) { return this.actions[n] || (this.actions[n] = this.mixer.clipAction(this.clips[n])); }
+  setOpacity(v) {
+    if (Math.abs(v - this.opacity) < 0.005) return;
+    this.opacity = v;
+    this.model.traverse(o => {
+      if (!o.isMesh) return;
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.transparent = v < 0.99; m.opacity = v; m.depthWrite = v >= 0.99; });
+    });
+    this.shadow.material.opacity = 0.55 * v;
+  }
   play(n, o) {
     o = o || {};
     const a = this.action(n);
@@ -806,7 +964,7 @@ function initActors() {
   strikerA = new Actor('batsman', Math.PI / 2);
   nonA = new Actor('batsman', 0);
   bowlerA = new Actor('fielder', 0);
-  fielders.forEach(f => { if (!f.hidden) f.actor = new Actor('fielder', Math.PI, { keeper: f === keeper }); });
+  fielders.forEach(f => { if (!f.hidden) f.actor = new Actor('fielder', Math.PI, { keeper: f === keeper, fade: true }); });
   bowlerFielder.actor = bowlerA;
   strikerA.play('stance', { loop: true, fade: 0 });
   nonA.play('backup', { loop: true, fade: 0 });
@@ -887,6 +1045,19 @@ function driveRuns(now) {
   });
 }
 
+/* ---- the crowd reacts ---- */
+function crowdReact(kind, v) {
+  v = v == null ? 1 : v;
+  if (kind === 'six') { sound.roar(1); crowdFx.pulse(1, 3.2); crowdFx.startWave(); }
+  else if (kind === 'four') { sound.cheer(1); crowdFx.pulse(0.8, 2.2); }
+  else if (kind === 'wicket') { sound.roar(0.9); crowdFx.pulse(0.95, 2.6); }
+  else if (kind === 'runs') { sound.applaud(0.35 + 0.2 * v); crowdFx.pulse(0.3 + 0.1 * v, 1); }
+  else if (kind === 'ooh') { sound.ooh(v); crowdFx.pulse(0.35, 0.8); }
+  else if (kind === 'groan') { sound.groan(); crowdFx.pulse(0.45, 1); }
+  else if (kind === 'appeal') { sound.appeal(); crowdFx.pulse(0.55, 1); }
+  setTimeout(() => sound.settle(), 2200);
+}
+
 /* ---- ball against the batsman's body: pads, thighs, torso, helmet ---- */
 const BODY_PARTS = [
   ['shin.L', 'foot.L', 0.095, 'pad'], ['shin.R', 'foot.R', 0.095, 'pad'],
@@ -950,10 +1121,14 @@ function onBodyHit(hit, now) {
   const verdict = lbwVerdict(hit);
   event = { type: 'body', part: hit.seg.part, verdict, t: 99, f: null };
   ballPos.copy(pos);
-  sound.pad(hit.seg.part === 'head' ? 0.9 : 0.6); fx.shake = hit.seg.part === 'head' ? 0.05 : 0.02;
+  if (hit.seg.part === 'head') sound.helmet(); else sound.pad(hit.seg.part === 'body' ? 0.8 : 0.6);
+  fx.shake = hit.seg.part === 'head' ? 0.05 : 0.02;
   const part = hit.seg.part, where = part === 'head' ? 'On the helmet' : part === 'body' ? 'On the body' : 'Off the pad';
+  const plausible = verdict.out || /Missing|over|outside off/i.test(verdict.why);
+  if (plausible && (hit.seg.part === 'pad' || hit.seg.part === 'thigh')) crowdReact('appeal');
+  else if (hit.seg.part === 'head') crowdReact('ooh', 1);
   if (verdict.out) {
-    sound.crowd(0.75); hitStop(0, 480, 0.35);
+    setTimeout(() => crowdReact('wicket'), 450); hitStop(0, 480, 0.35);
     finishBall(0, true, 'LBW', verdict.why, 'c-out');
   } else {
     const head = part === 'head' ? 'Hit on the helmet' : part === 'body' ? 'Hit on the body' : 'Not out';
@@ -1030,7 +1205,7 @@ function ballWithFielder(now, th, f) {
       const d = back.length();
       const stand = d > 0.45 ? a.root.position.clone().addScaledVector(back.normalize(), d - 0.45) : a.root.position.clone();
       event.spill = { path, t0: th, tPick, pickPos, stand };
-      sound.tock(0.25);
+      sound.glove(0.6); crowdReact('groan');
     }
     const sp = event.spill, ts = th - sp.t0;
     if (ts < sp.tPick) { samplePath(sp.path, ts, ballPos); return; }
@@ -1039,6 +1214,7 @@ function ballWithFielder(now, th, f) {
     if (!throwPlan.from) throwPlan.from = a.handPos(new THREE.Vector3());
     const u = clamp((now - throwPlan.start - 0.38) / throwPlan.dur, 0, 1);
     ballPos.copy(throwPlan.from).lerp(throwPlan.to, u); ballPos.y += Math.sin(u * Math.PI) * throwPlan.dur * 2.2;
+    if (u >= 1 && !throwPlan.popped) { throwPlan.popped = true; sound.glove(0.5); }
   } else a.handPos(ballPos, event.type === 'catch' || f.role === 'keeper');
 }
 function resetFielderEvent() {
@@ -1324,7 +1500,8 @@ function resolveSwing() {
   else if (kind === 'shot' && tier <= 1) { hitStop(40, 0, 1); fx.shake = 0.035; }
   else fx.shake = 0.02;
   if ((event.type === 'field' || event.type === 'drop') && event.runs > 0) planRuns(event.runs, hitWall + 0.35, event.t);
-  sound.tock(kind === 'edge' || kind === 'topedge' ? 0.45 : kind === 'defend' ? 0.4 : kind === 'mishit' ? 0.5 : 0.55 + 0.45 * power);
+  sound.bat(kind, q, power);
+  if (kind === 'edge' && event.type !== 'catch' && event.type !== 'drop' && event.type !== 'playedon') crowdReact('ooh', 0.8);
 }
 
 /* an inside or bottom edge that goes on to hit the stumps */
@@ -1469,6 +1646,7 @@ function requestShot(code, opts) {
   swing.shot = pickShot(side, zone, family, loft);
   swing.dir = side === 'B' ? 'block' : 'shot';
   playShot(swing);
+  if (side !== 'B') sound.swish();
   return true;
 }
 /* a second key pressed a moment after the first turns the shot into a diagonal */
@@ -1544,44 +1722,221 @@ $('pad').addEventListener('pointerdown', e => {
    SOUND (synthesised, starts after first tap)
    ============================================================ */
 const sound = (() => {
-  let ctx = null, noise = null;
+  // Everything is synthesised: no audio files. Two buses (effects, crowd) into a compressor so big
+  // moments don't clip. The crowd is a looping babble of many "voices" (noise through vowel-like
+  // resonances with syllable rhythms) whose level follows the game.
+  let ctx = null, white = null, murmur = null, clapBuf = null, master = null, sfx = null, crowdBus = null;
+  let bedGain = null, enabled = true, bedBase = 0.16;
+  try { enabled = localStorage.getItem('ac-sound') !== 'off'; } catch (_) {}
+  const T = () => ctx.currentTime;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function noiseBuffer(sec) {
+    const b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * sec), ctx.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  }
+  function murmurBuffer(sec) {
+    const sr = ctx.sampleRate, n = Math.floor(sec * sr), out = new Float32Array(n);
+    for (let v = 0; v < 14; v++) {
+      const f = rnd(280, 1700), bw = rnd(160, 420), r = Math.exp(-Math.PI * bw / sr), c = 2 * r * Math.cos(2 * Math.PI * f / sr), r2 = r * r;
+      const k = Math.max(1, Math.round(rnd(2.2, 5.5) * sec)) / sec, ph = rnd(0, 6.28), amp = rnd(0.4, 1);
+      let y1 = 0, y2 = 0;
+      for (let i = 0; i < n; i++) {
+        const y = (Math.random() * 2 - 1) * (1 - r) + c * y1 - r2 * y2; y2 = y1; y1 = y;
+        const e = Math.max(0, Math.sin(2 * Math.PI * k * i / sr + ph)); out[i] += y * (0.25 + e * e) * amp;
+      }
+    }
+    let m = 0; for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(out[i]));
+    const fade = Math.floor(sr * 0.04);
+    for (let i = 0; i < n; i++) out[i] = out[i] / m * Math.min(1, i / fade, (n - 1 - i) / fade);
+    const b = ctx.createBuffer(1, n, sr); b.getChannelData(0).set(out); return b;
+  }
+  function clapBuffer(sec) {                     // applause: hundreds of tiny hand-claps, thinning out
+    const sr = ctx.sampleRate, n = Math.floor(sec * sr), out = new Float32Array(n);
+    let t = 0;
+    while (t < sec) {
+      const dens = 90 * Math.exp(-t / (sec * 0.45)) + 6;
+      t += -Math.log(Math.random()) / dens;
+      const i0 = Math.floor(t * sr), len = Math.floor(sr * rnd(0.004, 0.009)), amp = rnd(0.3, 1), tau = rnd(0.0012, 0.0025) * sr;
+      let prev = 0;
+      for (let i = 0; i < len && i0 + i < n; i++) { const x = Math.random() * 2 - 1, hp = x - prev; prev = x; out[i0 + i] += hp * amp * Math.exp(-i / tau); }
+    }
+    let m = 0; for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(out[i]));
+    for (let i = 0; i < n; i++) out[i] /= m;
+    const b = ctx.createBuffer(1, n, sr); b.getChannelData(0).set(out); return b;
+  }
+
   function unlock() {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     try {
       ctx = new AC();
-      noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-      const ch = noise.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+      white = noiseBuffer(2);
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.25;
+      const limit = ctx.createDynamicsCompressor();                     // brick-wall-ish limiter so a six never clips
+      limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.1;
+      master = ctx.createGain(); master.gain.value = enabled ? 0.75 : 0;
+      master.connect(comp); comp.connect(limit); limit.connect(ctx.destination);
+      sfx = ctx.createGain(); sfx.gain.value = 1; sfx.connect(master);
+      crowdBus = ctx.createGain(); crowdBus.gain.value = 0.5; crowdBus.connect(master);
+      // build the crowd a moment later so the first tap stays snappy
+      setTimeout(() => {
+        try {
+          murmur = murmurBuffer(4); clapBuf = clapBuffer(3.2);
+          const src = ctx.createBufferSource(); src.buffer = murmur; src.loop = true;
+          const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+          bedGain = ctx.createGain(); bedGain.gain.value = 0.0001;
+          src.connect(lp); lp.connect(bedGain); bedGain.connect(crowdBus); src.start();
+          bedGain.gain.setTargetAtTime(bedBase, T(), 1.5);
+        } catch (_) {}
+      }, 30);
     } catch (_) { ctx = null; }
   }
-  function burst(freq, q, dur, vol, type) {
-    if (!ctx) return;
-    const src = ctx.createBufferSource(); src.buffer = noise;
-    const f = ctx.createBiquadFilter(); f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = q;
-    const g = ctx.createGain(); const t = ctx.currentTime;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f); f.connect(g); g.connect(ctx.destination); src.start(t); src.stop(t + dur + 0.05);
+  function setEnabled(on) {
+    enabled = on;
+    try { localStorage.setItem('ac-sound', on ? 'on' : 'off'); } catch (_) {}
+    if (ctx) master.gain.setTargetAtTime(on ? 0.75 : 0, T(), 0.05);
   }
+
+  /* ---- building blocks ---- */
+  function noise(bus, t, dur, vol, type, freq, q, attack) {
+    vol = Math.max(1e-4, vol);
+    const src = ctx.createBufferSource(); src.buffer = white; src.loop = dur > 1.9;
+    src.playbackRate.value = rnd(0.9, 1.1);
+    const f = ctx.createBiquadFilter(); f.type = type || 'bandpass'; f.frequency.value = freq || 1000; f.Q.value = q || 1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + (attack || 0.004)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(bus); src.start(t, rnd(0, 1)); src.stop(t + dur + 0.05);
+    return f;
+  }
+  function tone(bus, t, f0, f1, dur, vol, type, attack) {
+    vol = Math.max(1e-4, vol);
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + (attack || 0.003)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bus); o.start(t); o.stop(t + dur + 0.05);
+  }
+  /* many voices on one vowel: formant-filtered noise with a swell */
+  function voices(t, dur, vol, formants, glide, attack) {
+    vol = Math.max(1e-4, vol);
+    const src = ctx.createBufferSource(); src.buffer = white; src.loop = true;
+    const sum = ctx.createGain(); sum.gain.value = 1;
+    formants.forEach(([f, q, a]) => {
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q;
+      bp.frequency.setValueAtTime(f, t); if (glide) bp.frequency.linearRampToValueAtTime(f * glide, t + dur * 0.8);
+      const g = ctx.createGain(); g.gain.value = a; src.connect(bp); bp.connect(g); g.connect(sum);
+    });
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(vol, t + (attack || dur * 0.3));
+    env.gain.setTargetAtTime(0.0001, t + dur * 0.55, dur * 0.18);
+    sum.connect(env); env.connect(crowdBus); src.start(t, rnd(0, 1.5)); src.stop(t + dur * 1.6);
+  }
+  const VOWEL = {
+    a: [[750, 5, 1], [1200, 6, 0.6], [2600, 8, 0.25]],
+    o: [[450, 5, 1], [820, 6, 0.55], [2600, 8, 0.12]],
+    e: [[520, 5, 0.9], [1850, 7, 0.5], [2600, 8, 0.25]],
+  };
+  function whistles(t, n, vol) {
+    for (let i = 0; i < n; i++) {
+      const t0 = t + rnd(0.1, 1.2), f = rnd(1900, 3000), o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), g = ctx.createGain();
+      o.frequency.value = f; lfo.frequency.value = rnd(5, 8); lg.gain.value = f * 0.03; lfo.connect(lg); lg.connect(o.frequency);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t0 + rnd(0.5, 1.1));
+      o.connect(g); g.connect(crowdBus); o.start(t0); lfo.start(t0); o.stop(t0 + 1.3); lfo.stop(t0 + 1.3);
+    }
+  }
+  function applause(t, vol, rate) {
+    if (!clapBuf) return;
+    const src = ctx.createBufferSource(); src.buffer = clapBuf; src.playbackRate.value = rate || 1;
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol, t);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1700; bp.Q.value = 0.7;
+    src.connect(bp); bp.connect(g); g.connect(crowdBus); src.start(t);
+  }
+  function dhol(t, bars) {                          // stadium drums: bass "dha" and slap "tin"
+    const beat = 0.2, pat = 'B.TTB.T.BTTBT.B.';
+    for (let bar = 0; bar < bars; bar++) for (let i = 0; i < pat.length; i++) {
+      const at = t + (bar * pat.length + i) * beat * 0.5, c = pat[i];
+      if (c === 'B') { tone(crowdBus, at, 120, 52, 0.28, 0.4); noise(crowdBus, at, 0.05, 0.16, 'lowpass', 400, 0.7); }
+      if (c === 'T') { tone(crowdBus, at, 340, 300, 0.09, 0.16); noise(crowdBus, at, 0.035, 0.14, 'bandpass', 2600, 2); }
+    }
+  }
+  function horn(t) {                                // a few blasts on a fan's bugle, notes from a pentatonic scale
+    const notes = [392, 440, 523, 587, 659], n = 3 + (Math.random() * 2 | 0);
+    for (let i = 0; i < n; i++) {
+      const at = t + i * 0.2, f = notes[(Math.random() * notes.length) | 0], dur = i === n - 1 ? 0.55 : 0.15;
+      const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+      o1.type = o2.type = 'sawtooth'; o1.frequency.value = f; o2.frequency.value = f * 1.006;
+      lp.type = 'lowpass'; lp.frequency.setValueAtTime(600, at); lp.frequency.exponentialRampToValueAtTime(2600, at + 0.05);
+      g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.06, at + 0.03); g.gain.setValueAtTime(0.06, at + dur - 0.04); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(crowdBus); o1.start(at); o2.start(at); o1.stop(at + dur + 0.05); o2.stop(at + dur + 0.05);
+    }
+  }
+  function bed(level, tc) { if (bedGain) bedGain.gain.setTargetAtTime(Math.max(0.0001, level), T(), tc || 0.4); }
+
+  const ok = () => ctx && enabled;
   return {
-    unlock,
-    tock(power) {
-      if (!ctx) return; burst(1500, 2.5, 0.09, 0.5 * power); burst(420, 1.2, 0.14, 0.35 * power);
-      const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
-      o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(90, t + 0.12);
-      g.gain.setValueAtTime(0.25 * power, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
-      o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.2);
+    unlock, setEnabled, get enabled() { return enabled; },
+    /* ---- the crowd ---- */
+    runup(p) { if (ok()) bed(bedBase + 0.12 * p, 0.3); },                     // murmur builds as the bowler runs in
+    hush() { if (ok()) bed(bedBase * 0.55, 0.12); },                           // quiet at the moment of delivery
+    settle() { if (ok()) bed(bedBase, 1.2); },
+    ooh(v) { if (!ok()) return; const t = T(); voices(t, 1.5, 0.3 * (v || 1), VOWEL.o, 1.12, 0.35); },
+    groan() { if (!ok()) return; const t = T(); voices(t, 1.8, 0.2, VOWEL.a, 0.72, 0.2); },
+    rising() { if (!ok()) return; const t = T(); voices(t, 2.2, 0.34, VOWEL.o, 1.35, 1.2); },       // a big hit hangs in the air
+    applaud(v) { if (!ok()) return; applause(T(), 0.35 * (v || 1)); },
+    cheer(v) {                                        // a four
+      if (!ok()) return; const t = T();
+      voices(t, 2.4, 0.24 * v, VOWEL.e, 1.05, 0.18); voices(t + 0.05, 2.6, 0.17 * v, VOWEL.a, 1.0, 0.25);
+      applause(t + 0.3, 0.4 * v); whistles(t, 3, 0.03); dhol(t + 0.5, 1);
     },
-    thud() { if (!ctx) return; burst(260, 0.9, 0.09, 0.22, 'lowpass'); },
-    pad(v) { if (!ctx) return; burst(520, 1.1, 0.08, 0.4 * v, 'bandpass'); burst(180, 0.8, 0.12, 0.35 * v, 'lowpass'); },
-    rattle() { if (!ctx) return; burst(2600, 6, 0.08, 0.35); setTimeout(() => burst(3100, 7, 0.07, 0.25), 45); setTimeout(() => burst(2200, 5, 0.1, 0.2), 90); },
-    crowd(level) {
-      if (!ctx) return;
-      const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true;
-      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.6;
-      const g = ctx.createGain(), t = ctx.currentTime;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22 * level, t + 0.35); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
-      src.connect(f); f.connect(g); g.connect(ctx.destination); src.start(t); src.stop(t + 2.8);
+    roar(v) {                                         // a six or a wicket
+      if (!ok()) return; const t = T();
+      voices(t, 3.2, 0.24 * v, VOWEL.a, 1.08, 0.12); voices(t, 3.0, 0.16 * v, VOWEL.e, 1.1, 0.2);
+      noise(crowdBus, t, 3.2, 0.12 * v, 'lowpass', 500, 0.7, 0.15);
+      applause(t + 0.6, 0.35 * v); whistles(t, 5, 0.03); horn(t + 0.4); dhol(t + 0.9, 2);
     },
+    appeal() {                                        // "Howzat!" from the fielders, then the crowd joins in
+      if (!ok()) return; const t = T();
+      [0, 1, 2].forEach(k => {
+        const o = ctx.createOscillator(), bp1 = ctx.createBiquadFilter(), bp2 = ctx.createBiquadFilter(), g = ctx.createGain(), mix = ctx.createGain();
+        o.type = 'sawtooth'; const f = rnd(165, 235);
+        o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 1.15, t + 0.2); o.frequency.setValueAtTime(f * 1.05, t + 0.26); o.frequency.linearRampToValueAtTime(f * 1.35, t + 0.62);
+        bp1.type = bp2.type = 'bandpass'; bp1.Q.value = 6; bp2.Q.value = 8;
+        bp1.frequency.setValueAtTime(700, t); bp1.frequency.linearRampToValueAtTime(420, t + 0.2); bp1.frequency.setValueAtTime(760, t + 0.26);
+        bp2.frequency.setValueAtTime(1150, t); bp2.frequency.linearRampToValueAtTime(820, t + 0.2); bp2.frequency.setValueAtTime(1300, t + 0.26);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14, t + 0.04); g.gain.exponentialRampToValueAtTime(0.03, t + 0.22);
+        g.gain.exponentialRampToValueAtTime(0.16, t + 0.3); g.gain.setValueAtTime(0.16, t + 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+        o.connect(bp1); o.connect(bp2); bp1.connect(mix); bp2.connect(mix); mix.connect(g); g.connect(sfx); o.start(t + k * 0.03); o.stop(t + 0.9);
+      });
+      voices(t + 0.15, 1.6, 0.3, VOWEL.a, 1.1, 0.3);
+    },
+    /* ---- the game ---- */
+    step(p) { if (ok()) noise(sfx, T(), 0.05, 0.05 + 0.1 * p, 'lowpass', 380, 0.8, 0.003); },
+    swish() { if (!ok()) return; const t = T(), f = noise(sfx, t, 0.16, 0.12, 'bandpass', 500, 1.4, 0.03); f.frequency.exponentialRampToValueAtTime(1800, t + 0.14); },
+    bat(kind, q, power) {
+      if (!ok()) return; const t = T(), p = clamp(power, 0.2, 1.2);
+      noise(sfx, t, 0.012, 0.5 * p, 'highpass', 2500, 0.7, 0.001);                       // the crack
+      if (kind === 'edge' || kind === 'topedge') { tone(sfx, t, 3200, 3000, 0.04, 0.12); tone(sfx, t, 1900, 1850, 0.05, 0.08); return; }
+      if (kind === 'defend') { tone(sfx, t, 780, 760, 0.07, 0.22); noise(sfx, t, 0.05, 0.12, 'bandpass', 900, 2); return; }
+      const sweet = clamp(q, 0, 1);
+      tone(sfx, t, 1120 * rnd(0.97, 1.03), 1100, 0.05 + 0.07 * sweet, 0.28 * p * (0.4 + sweet)); // blade modes ring longer from the middle
+      tone(sfx, t, 2360 * rnd(0.97, 1.03), 2330, 0.03 + 0.04 * sweet, 0.16 * p * sweet);
+      tone(sfx, t, 640, 600, 0.09, 0.2 * p * (1.3 - sweet));
+      noise(sfx, t, 0.06, 0.18 * p * (1.2 - sweet), 'bandpass', 700, 1.5);
+    },
+    bounce(pace) { if (ok()) { const t = T(); tone(sfx, t, 105, 80, 0.07, 0.25 * pace); noise(sfx, t, 0.06, 0.2 * pace, 'lowpass', 900, 0.8); } },
+    thud() { this.bounce(0.8); },
+    pad(v) { if (!ok()) return; const t = T(); tone(sfx, t, 160, 95, 0.12, 0.4 * v); noise(sfx, t, 0.09, 0.3 * v, 'lowpass', 800, 0.9); },
+    helmet() { if (!ok()) return; const t = T(); [[1320, 0.3], [2210, 0.2], [3080, 0.14]].forEach(([f, d]) => tone(sfx, t, f, f * 0.99, d, 0.14)); noise(sfx, t, 0.02, 0.3, 'highpass', 3000, 0.7, 0.001); },
+    glove(v) { if (!ok()) return; const t = T(); noise(sfx, t, 0.035, 0.35 * (v || 1), 'bandpass', 1100, 2); tone(sfx, t, 230, 150, 0.06, 0.25 * (v || 1)); },
+    rattle() {
+      if (!ok()) return; const t = T();
+      [520, 690, 880].forEach((f, i) => tone(sfx, t + i * 0.03, f, f * 0.97, 0.07, 0.3));        // stumps knocked back
+      for (let i = 0; i < 5; i++) noise(sfx, t + 0.06 + i * rnd(0.02, 0.05), 0.02, 0.18, 'bandpass', rnd(2400, 3800), 6, 0.001);  // bails clatter
+    },
+    tock(power) { this.bat('shot', 0.8, power); },
+    crowd(level) { level >= 0.95 ? this.roar(1) : level >= 0.8 ? this.cheer(1) : this.applaud(level); },
   };
 })();
 
@@ -1910,13 +2265,14 @@ function clearCallout() { $('callout').className = 'callout'; $('callout-main').
 const METER_RANGE = 0.16;
 function layoutMeter(W) {
   const pct = s => (s / (2 * METER_RANGE)) * 100;
-  const set = (id, w) => { const el = $(id); el.style.left = (50 - pct(w)) + '%'; el.style.width = (2 * pct(w)) + '%'; };
+  const set = (id, w) => { const el = $(id); el.style.top = (50 - pct(w)) + '%'; el.style.height = (2 * pct(w)) + '%'; };
   set('z-ok', 3 * W); set('z-good', 2 * W); set('z-perfect', W);
 }
 function showMeter(err, W) {
   $('meter').classList.remove('dim');
   const n = $('needle'); n.hidden = false;
-  n.style.left = (50 + clamp(err / METER_RANGE, -1, 1) * 50) + '%';
+  const at = (50 + clamp(err / METER_RANGE, -1, 1) * 50) + '%';
+  n.style.top = at; $('meter-label').style.top = at;
   $('meter-label').textContent = timingLabel(err, W);
 }
 
@@ -1955,7 +2311,7 @@ function nextBall() {
     captain.plan = state.bowlerType === 'pace' && Math.random() < 0.35 ? 'short' : 'normal';
     newOver = true;
   }
-  phase = 'runup'; runupT = 0; swing = null; hitPath = null; event = null; deadInfo = null;
+  phase = 'runup'; runupT = 0; swing = null; hitPath = null; event = null; deadInfo = null; audioStep = -1; audioBed = -1;
   bowledChecked = false; bouncedShown = false; keeperHold = false; padHit = false; lastTd = 0;
   state.foot = 0;
   resetStumps(nearStumps); bounceMark.visible = false; bounceMark.material.opacity = 0.85; clearTrail();
@@ -1972,7 +2328,7 @@ function nextBall() {
   del = makeDelivery();
   $('gun-k').textContent = `Over ${state.over + 1} · ${state.bowlerType === 'pace' ? 'Pace' : (state.spinTurn > 0 ? 'Off-spin' : 'Leg-spin')}`;
   $('gun-v').innerHTML = '— <small>km/h</small>'; $('gun-len').textContent = 'Running in';
-  $('meter').classList.add('dim'); $('needle').hidden = true; $('meter-label').textContent = 'Timing';
+  $('meter').classList.add('dim'); $('needle').hidden = true; $('meter-label').textContent = 'Timing'; $('meter-label').style.top = '50%';
   if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
   else if (change) callout(change.main, change.sub, 'c-quiet');
   else if (newOver && captain.plan === 'short') callout('Short-ball plan', 'Expect bouncers this over', 'c-quiet');
@@ -2089,6 +2445,9 @@ $('btn-resume').addEventListener('click', () => {
   nextBall();
 });
 $('btn-menu').addEventListener('click', e => { e.currentTarget.blur(); openMenu(true); });
+function syncSoundBtn() { const b = $('btn-sound'); b.textContent = sound.enabled ? 'Sound' : 'Muted'; b.setAttribute('aria-pressed', String(sound.enabled)); b.setAttribute('aria-label', sound.enabled ? 'Sound on, tap to mute' : 'Sound muted, tap to turn on'); }
+$('btn-sound').addEventListener('click', e => { e.currentTarget.blur(); sound.unlock(); sound.setEnabled(!sound.enabled); syncSoundBtn(); });
+syncSoundBtn();
 $('btn-again').addEventListener('click', () => { sound.unlock(); startInnings(); });
 $('btn-settings').addEventListener('click', () => { phase = 'over'; openMenu(false); });
 
@@ -2222,7 +2581,7 @@ function beginSetField() {
   });
   return maxDur;
 }
-let setT = 0, setDur = 0;
+let setT = 0, setDur = 0, audioStep = -1, audioBed = -1;
 
 function tick(ms) {
   const wall = ms / 1000;
@@ -2241,12 +2600,15 @@ function tick(ms) {
   if (phase === 'runup') {
     runupT += dt;
     driveBowler(runupT);
+    const stride = RUNUP - CLIP_RELEASE;
+    if (runupT < stride + 0.15 && runupT - audioStep > 0.21) { audioStep = runupT; sound.step(runupT / RUNUP); }
+    if (runupT - audioBed > 0.25) { audioBed = runupT; sound.runup(runupT / RUNUP); }
     // ball rides in the bowler's hand, easing onto the release point
     const k = smooth(clamp((runupT - (RUNUP - 0.12)) / 0.12, 0, 1));
     ballPos.set(lerp(bowlerHand.x, RELEASE.x, k), lerp(bowlerHand.y, RELEASE.y, k), lerp(bowlerHand.z, RELEASE.z, k));
     if (!actorsReady) ballPos.set(RELEASE.x, RELEASE.y, RELEASE.z);
     if (runupT >= RUNUP) {
-      phase = 'delivery'; relWall = now - (runupT - RUNUP); trail.visible = true;
+      phase = 'delivery'; relWall = now - (runupT - RUNUP); trail.visible = true; sound.hush();
       if (state.level === 'club') { bounceMark.position.set(del.bouncePos.x, 0.012, del.bouncePos.z); bounceMark.visible = true; bounceMark.material.opacity = 0.35; }
     }
   }
@@ -2258,7 +2620,7 @@ function tick(ms) {
     if (!bouncedShown && td >= del.bounceT) {
       bouncedShown = true;
       bounceMark.position.set(del.bouncePos.x, 0.012, del.bouncePos.z); bounceMark.visible = true; bounceMark.material.opacity = 0.85;
-      puff.position.set(del.bouncePos.x, 0.015, del.bouncePos.z); puffT = 0; sound.thud();
+      puff.position.set(del.bouncePos.x, 0.015, del.bouncePos.z); puffT = 0; sound.bounce(del.type === 'pace' ? 1 : 0.7);
     }
     if (swing && !swing.resolved && td >= swing.tc) resolveSwing();
     if (phase === 'delivery' && actorsReady && !padHit && td > lastTd) {
@@ -2275,7 +2637,7 @@ function tick(ms) {
         bowledChecked = true;
         const sp = del.stumpsPos;
         if (sp && Math.abs(sp.x) < 0.1143 + BALL_R * 0.8 && sp.y < 0.71 + BALL_R) {
-          knockStumps(nearStumps, sp.x); sound.rattle(); sound.crowd(0.7);
+          knockStumps(nearStumps, sp.x); sound.rattle(); crowdReact('wicket');
           hitStop(0, 520, 0.3); fx.shake = 0.05;
           deadInfo = { bowled: true };
         }
@@ -2284,7 +2646,9 @@ function tick(ms) {
         deadInfo.done = true;
         finishBall(0, true, 'Bowled', swing ? (swing.outcome === 'beaten' ? 'Played down the wrong line' : timingLabel(swing.err || 0, LEVELS[state.level].W)) : 'Left it, and it hit the stumps', 'c-out');
       } else if (!pending && td >= del.tEnd) {
+        if (keeperHold) sound.glove(0.8);
         const o = swing ? swing.outcome : null;
+        if (del.stumpsPos && Math.abs(del.stumpsPos.x) < 0.3 && del.stumpsPos.y < 1.0) crowdReact('ooh', swing ? 1 : 0.6);   // just over or past the stumps
         const head = !swing ? 'Left alone' : o === 'beaten' ? 'Beaten' : o === 'over' ? 'Over the bat' : 'Played and missed';
         const sub = !swing ? 'No shot offered' : o === 'beaten' ? 'Bat was on the wrong line. Step across with A / D' : timingLabel(swing.err, LEVELS[state.level].W);
         finishBall(0, false, head, sub, 'c-quiet');
@@ -2303,17 +2667,18 @@ function tick(ms) {
       eventApplied = true;
       const name = swing.name, ev = event;
       if (ev.type === 'playedon') {
-        knockStumps(nearStumps, ev.x); sound.rattle(); sound.crowd(0.7); hitStop(0, 450, 0.35); fx.shake = 0.04;
+        knockStumps(nearStumps, ev.x); sound.rattle(); crowdReact('wicket'); hitStop(0, 450, 0.35); fx.shake = 0.04;
         finishBall(0, true, 'Bowled', `Played on · ${swing.name.toLowerCase()}`, 'c-out');
       }
-      else if (ev.type === 'six') { sound.crowd(1); finishBall(6, false, 'Six', `${name}${ev.carry ? ' · ' + ev.carry + ' m' : ''}`, 'c-six'); }
-      else if (ev.type === 'four') { sound.crowd(0.85); finishBall(4, false, 'Four', name, 'c-four'); }
+      else if (ev.type === 'six') { crowdReact('six'); finishBall(6, false, 'Six', `${name}${ev.carry ? ' · ' + ev.carry + ' m' : ''}`, 'c-six'); }
+      else if (ev.type === 'four') { crowdReact('four'); finishBall(4, false, 'Four', name, 'c-four'); }
       else if (ev.type === 'catch') {
-        sound.crowd(0.6);
+        sound.glove(1); crowdReact('wicket');
         const who = ev.f === keeper ? 'Caught behind' : ev.f === bowlerFielder ? 'Caught and bowled' : 'Caught';
         finishBall(0, true, who, ev.f === keeper || ev.f === bowlerFielder ? name : `${name} · c ${ev.f.name}`, 'c-out');
       } else {
         const r = ev.runs;
+        if (ev.type !== 'drop' && r > 0) crowdReact('runs', r);
         const head = ev.type === 'drop' ? 'Dropped' : r === 0 ? (swing.kind === 'defend' ? 'Blocked' : 'No run') : `${r} run${r > 1 ? 's' : ''}`;
         const sub = ev.type === 'drop' ? `${ev.f.name} put it down · ${r} run${r === 1 ? '' : 's'}` : r === 0 && swing.kind !== 'defend' ? `${name} · straight to ${ev.f.name.toLowerCase()}` : name;
         finishBall(r, false, head, sub, r > 0 || ev.type === 'drop' ? 'c-runs' : 'c-quiet');
@@ -2328,6 +2693,9 @@ function tick(ms) {
     const res = inningsOver();
     if (res) showEnd(res); else nextBall();
   }
+
+  if (phase === 'hit' && swing && !swing.rose && ballPos.y > 7) { swing.rose = true; sound.rising(); crowdFx.pulse(0.55, 1.6); }
+  crowdFx.update(wallDt);
 
   /* ball visuals */
   if (phase !== 'menu' && phase !== 'over') {
@@ -2355,6 +2723,13 @@ function tick(ms) {
     driveRuns(now);
     driveFielders(now, dt);
     strikerA.update(dt); nonA.update(dt); bowlerA.update(dt);
+    // on a phone the keeper and slips sit right in front of the lens: fade them unless they're taking the ball
+    fielders.forEach(f => {
+      if (!f.actor || f === bowlerFielder) return;
+      const taking = event && event.f === f && (phase === 'hit' || phase === 'post');
+      const near = view.padOn && !taking && f.actor.root.position.distanceTo(camera.position) < 7.8;
+      f.actor.setOpacity(lerp(f.actor.opacity, near ? 0.16 : 1, 1 - Math.exp(-wallDt * 8)));
+    });
     fielders.forEach(f => { if (f.actor && f !== bowlerFielder) f.actor.update(dt); });
   }
   updateStumps(nearStumps, dt);
@@ -2385,6 +2760,10 @@ function tick(ms) {
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
+
+/* test hook, only with ?debug in the address */
+if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, get swing() { return swing; }, get event() { return event; },
+  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound };
 
 /* boot: idle scene behind the menu while the players load */
 state.hand = 1;

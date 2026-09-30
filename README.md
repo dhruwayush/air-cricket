@@ -71,6 +71,9 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - Low catches are taken crouching with hands together, high ones with the hands up. A dropped catch pops out of the hands, falls, and is picked up and thrown back.
 - The ball collides with the batsman's animated pads, thighs, body and helmet and rebounds. LBW is decided like ball tracking: where it pitched, whether the impact was in line (or outside off with no shot offered), and whether it would have gone on to hit the stumps.
 - Balls you leave or miss carry through to the keeper's gloves.
+- **A living crowd.** The stands are drawn seat by seat in team colours. The crowd jumps with excitement, does a Mexican wave after a six, and fills with camera flashes on big moments, while flags wave along the front rows.
+- **Stadium sound, all synthesised in the browser with no audio files.** A murmuring crowd builds as the bowler runs in and hushes at the moment of delivery. It oohs at a play-and-miss, rises as a skier hangs in the air, groans at a dropped catch and roars for sixes and wickets, with applause, whistles, dhol drums and horns. The bat sounds different off the middle, the toe and the edge, and there are footsteps, bounces, pads, helmet knocks, stumps and gloves. Use the Sound button to mute.
+- **Built for phones.** The timing meter is a slim vertical gauge on the left edge. On touch screens the view is framed in the space above the controls, and the keeper and slips fade while they stand in front of the lens.
 - The batsmen run between the wickets, and fielders pick up and throw back.
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.

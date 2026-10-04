@@ -303,6 +303,11 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
         <input type="radio" name="gfx" id="gfx-high" value="high"><label for="gfx-high">High</label>
         <input type="radio" name="gfx" id="gfx-fast" value="fast"><label for="gfx-fast">Fast</label>
       </div></fieldset>
+      <fieldset><legend>Commentary</legend><div class="seg">
+        <input type="radio" name="voice" id="voice-en" value="en" checked><label for="voice-en">English</label>
+        <input type="radio" name="voice" id="voice-hi" value="hi"><label for="voice-hi" lang="hi">हिंदी</label>
+        <input type="radio" name="voice" id="voice-off" value="off"><label for="voice-off">Off</label>
+      </div></fieldset>
     </div>
     <p class="err" id="cam-err" hidden></p>
     <div class="actions">
@@ -1355,7 +1360,7 @@ function onBodyHit(hit, now) {
   fx.shake = hit.seg.part === 'head' ? 0.05 : 0.02;
   const part = hit.seg.part, where = part === 'head' ? 'On the helmet' : part === 'body' ? 'On the body' : 'Off the pad';
   const plausible = verdict.out || /Missing|over|outside off/i.test(verdict.why);
-  if (plausible && (hit.seg.part === 'pad' || hit.seg.part === 'thigh')) crowdReact('appeal');
+  if (plausible && (hit.seg.part === 'pad' || hit.seg.part === 'thigh')) { crowdReact('appeal'); commentary.say('appeal', { pri: 2 }); }
   else if (hit.seg.part === 'head') crowdReact('ooh', 1);
   if (verdict.out && safeBall()) {
     finishBall(0, false, 'Not out', safeLine('Plumb LBW'), 'c-quiet');
@@ -1985,7 +1990,7 @@ const sound = (() => {
   // Everything is synthesised: no audio files. Two buses (effects, crowd) into a compressor so big
   // moments don't clip. The crowd is a looping babble of many "voices" (noise through vowel-like
   // resonances with syllable rhythms) whose level follows the game.
-  let ctx = null, white = null, murmur = null, clapBuf = null, master = null, sfx = null, crowdBus = null;
+  let ctx = null, white = null, murmur = null, clapBuf = null, master = null, sfx = null, crowdBus = null, voiceBus = null;
   let bedGain = null, enabled = true, bedBase = 0.16;
   try { enabled = localStorage.getItem('ac-sound') !== 'off'; } catch (_) {}
   const T = () => ctx.currentTime;
@@ -2039,6 +2044,7 @@ const sound = (() => {
       limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.1;
       master = ctx.createGain(); master.gain.value = enabled ? 0.75 : 0;
       master.connect(comp); comp.connect(limit); limit.connect(ctx.destination);
+      voiceBus = ctx.createGain(); voiceBus.gain.value = enabled ? 1 : 0; voiceBus.connect(limit);   // commentary skips the crowd compressor
       sfx = ctx.createGain(); sfx.gain.value = 1; sfx.connect(master);
       crowdBus = ctx.createGain(); crowdBus.gain.value = 0.5; crowdBus.connect(master);
       // build the crowd a moment later so the first tap stays snappy
@@ -2057,7 +2063,8 @@ const sound = (() => {
   function setEnabled(on) {
     enabled = on;
     try { localStorage.setItem('ac-sound', on ? 'on' : 'off'); } catch (_) {}
-    if (ctx) master.gain.setTargetAtTime(on ? 0.75 : 0, T(), 0.05);
+    if (ctx) { master.gain.setTargetAtTime(on ? 0.75 : 0, T(), 0.05); voiceBus.gain.setTargetAtTime(on ? 1 : 0, T(), 0.05); }
+    if (!on && window.speechSynthesis) try { speechSynthesis.cancel(); } catch (_) {}
   }
 
   /* ---- building blocks ---- */
@@ -2137,6 +2144,9 @@ const sound = (() => {
   const ok = () => ctx && enabled;
   return {
     unlock, setEnabled, get enabled() { return enabled; },
+    get ctx() { return ctx; }, get voiceBus() { return voiceBus; },
+    // the crowd drops back while someone is talking, then swells again
+    duck(sec) { if (!ctx || !crowdBus) return; const t = T(); crowdBus.gain.cancelScheduledValues(t); crowdBus.gain.setTargetAtTime(0.24, t, 0.06); crowdBus.gain.setTargetAtTime(0.5, t + sec, 0.35); },
     /* ---- the crowd ---- */
     runup(p) { if (ok()) bed(bedBase + 0.12 * p, 0.3); },                     // murmur builds as the bowler runs in
     hush() { if (ok()) bed(bedBase * 0.55, 0.12); },                           // quiet at the moment of delivery
@@ -2198,6 +2208,106 @@ const sound = (() => {
     tock(power) { this.bat('shot', 0.8, power); },
     crowd(level) { level >= 0.95 ? this.roar(1) : level >= 0.8 ? this.cheer(1) : this.applaud(level); },
   };
+})();
+
+/* ============================================================
+   COMMENTARY: the umpire's calls, the fielders' appeals and a two-voice commentary box, in English or Hindi.
+   Lines live in tools/voice_lines.py. Recorded clips (Edge neural voices, embedded by build_page.py as
+   window.AC_VOICE) play when they're in the build; otherwise the device's own speech voice reads the same line.
+   Line ids are "key.n": say('four') picks one of four.1, four.2 ... and avoids repeating the last one.
+   ============================================================ */
+const commentary = (() => {
+  const LINES = window.AC_LINES || {}, CLIPS = window.AC_VOICE || {};
+  const SPEECH_LANG = { en: 'en-IN', hi: 'hi-IN', common: 'en-IN' };
+  let lang = 'en';
+  try { lang = localStorage.getItem('ac-voice') || 'en'; } catch (_) {}
+  const buffers = {}, decoding = {}, lastId = {}, log = [];
+  let busyUntil = 0, busyPri = 0, playing = null, timer = 0;
+  const now = () => performance.now() / 1000;
+  const groupOf = key => /^(ump_|appeal)/.test(key) ? 'common' : lang;
+
+  function b64(s) { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+  function decode(group, id) {
+    const k = group + '/' + id, ac = sound.ctx;
+    if (buffers[k] || decoding[k] || !ac || !(CLIPS[group] && CLIPS[group][id])) return decoding[k] || Promise.resolve(buffers[k] || null);
+    decoding[k] = new Promise(res => ac.decodeAudioData(b64(CLIPS[group][id]), b => { buffers[k] = b; res(b); }, () => res(null)));
+    return decoding[k];
+  }
+  // decode this language's clips a few at a time after the first tap, so the first line has no lag
+  function preload() {
+    if (!sound.ctx) return;
+    const todo = [];
+    ['common', lang].forEach(g => Object.keys(CLIPS[g] || {}).forEach(id => todo.push([g, id])));
+    (function next() { const j = todo.shift(); if (j) decode(j[0], j[1]).then(() => setTimeout(next, 15)); })();
+  }
+  let voices = [];
+  function pickVoice(code) {
+    if (!window.speechSynthesis) return null;
+    if (!voices.length) voices = speechSynthesis.getVoices() || [];
+    const base = code.slice(0, 2);
+    return voices.find(v => v.lang === code || v.lang === code.replace('-', '_')) || voices.find(v => (v.lang || '').startsWith(base)) || null;
+  }
+  if (window.speechSynthesis) try { speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices() || []; }; } catch (_) {}
+
+  function variants(group, key) { return Object.keys(LINES[group] || {}).filter(id => id.slice(0, id.lastIndexOf('.')) === key); }
+  function choose(group, key) {
+    const v = variants(group, key); if (!v.length) return null;
+    let id = v[(Math.random() * v.length) | 0];
+    if (v.length > 1 && id === lastId[key]) id = v[(v.indexOf(id) + 1) % v.length];
+    lastId[key] = id; return id;
+  }
+  function speakNow(group, id, pri) {
+    const text = (LINES[group] || {})[id]; if (!text) return;
+    const k = group + '/' + id, ac = sound.ctx, buf = buffers[k];
+    log.push(id); if (log.length > 30) log.shift();
+    stop();
+    if (buf && ac && sound.voiceBus) {
+      const src = ac.createBufferSource(), g = ac.createGain();
+      src.buffer = buf; g.gain.value = group === 'common' ? 1.0 : 0.9;
+      src.connect(g); g.connect(sound.voiceBus); src.start();
+      playing = src; busyUntil = now() + buf.duration; busyPri = pri;
+      sound.duck(buf.duration);
+      return;
+    }
+    if (CLIPS[group] && CLIPS[group][id] && ac) { decode(group, id).then(b => { if (b && now() < busyUntil + 0.3) speakNow(group, id, pri); }); busyUntil = now() + 0.4; busyPri = pri; return; }
+    // no recording in this build: the device's speech voice reads it
+    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+    let code = SPEECH_LANG[group], say = text;
+    let voice = pickVoice(code);
+    if (!voice && group === 'hi') {                                 // no Hindi voice on this device: fall back to the English line
+      const en = (LINES.en || {})[id]; if (en) { say = en; code = 'en-IN'; voice = pickVoice(code); }
+    }
+    try {
+      const u = new SpeechSynthesisUtterance(say);
+      u.lang = code; if (voice) u.voice = voice;
+      u.rate = group === 'common' ? 1.0 : 1.08; u.pitch = /^appeal/.test(id) ? 1.3 : 1.0; u.volume = 1;
+      speechSynthesis.speak(u);
+      const est = 0.35 + say.length * 0.062;
+      busyUntil = now() + est; busyPri = pri; sound.duck(est);
+    } catch (_) {}
+  }
+  function stop() {
+    if (playing) { try { playing.stop(); } catch (_) {} playing = null; }
+    if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (_) {}
+  }
+  /* say('four', { pri, delay, chance }): higher priority cuts in, equal or lower waits its turn or is dropped */
+  function say(key, o) {
+    o = o || {};
+    if (lang === 'off' || !sound.enabled) return;
+    if (o.chance != null && Math.random() > o.chance) return;
+    const group = groupOf(key), id = choose(group, key); if (!id) return;
+    const pri = o.pri || 1, go = () => {
+      if (now() < busyUntil - 0.1 && pri <= busyPri) return;
+      speakNow(group, id, pri);
+    };
+    if (o.delay) { clearTimeout(timer); timer = setTimeout(go, o.delay * 1000); } else go();
+  }
+  function setLang(l) {
+    lang = l; try { localStorage.setItem('ac-voice', l); } catch (_) {}
+    stop(); preload();
+  }
+  return { say, stop, preload, setLang, get lang() { return lang; }, get log() { return log; },
+    get recorded() { return Object.keys(CLIPS[lang] || {}).length > 0; } };
 })();
 
 /* ============================================================
@@ -2562,7 +2672,8 @@ function startInnings(m) {
   match = m || makeMatch(state.mode);
   if (match.level) state.level = match.level;          // the daily is the same difficulty for everyone
   Object.assign(state, { runs: 0, wkts: 0, balls: 0, fours: 0, sixes: 0, dots: 0, strip: [], log: [], foot: 0, over: 0,
-    extras: 0, wides: 0, noBalls: 0, faced: 0, batRuns: 0, rebowl: 0, freeHit: false });
+    extras: 0, wides: 0, noBalls: 0, faced: 0, batRuns: 0, rebowl: 0, freeHit: false, saidNeedOne: false });
+  commentary.preload();
   setupOver(0);
   placeField();
   placeActors();
@@ -2605,6 +2716,14 @@ function nextBall() {
   $('gun-k').textContent = `Over ${state.over + 1} · ${state.bowlerType === 'pace' ? 'Pace' : (state.spinTurn > 0 ? 'Off-spin' : 'Leg-spin')}`;
   $('gun-v').innerHTML = '— <small>km/h</small>'; $('gun-len').textContent = 'Running in';
   $('meter').classList.add('dim'); $('needle').hidden = true; $('meter-label').textContent = 'Timing'; $('meter-label').style.top = '50%';
+  // the commentary box sets up the ball
+  if (state.freeHit) commentary.say('free_hit', { pri: 2, delay: 0.6 });
+  else if (state.balls === 0 && !state.rebowl) commentary.say(match.kind === 'daily' ? 'start_daily' : match.kind === 'super' ? 'start_super' : 'start', { pri: 1, delay: 0.5 });
+  else if (match.target != null) {
+    const need = match.target - state.runs, left = match.balls - state.balls;
+    if (need === 1 && !state.saidNeedOne) { state.saidNeedOne = true; commentary.say('need_one', { pri: 1, delay: 0.6 }); }
+    else if (left === 1 && need > 1 && need <= 6) commentary.say('last_ball', { pri: 1, delay: 0.6 });
+  }
   if (state.freeHit) callout('Free hit', 'Swing freely: you can’t be out', 'c-free');
   else if (state.balls === 0 && !state.rebowl && match.kind !== 'chase' && match.kind !== 'nets') callout(match.label + (match.practice ? ' · practice' : ''), matchIntro(), 'c-quiet');
   else if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
@@ -2640,9 +2759,10 @@ function callNoBall() {
   farPopMat.color.copy(lin(0xff6152));
   $('gun-len').textContent = 'Overstepped';
   crowdReact('ooh', 0.5);
+  commentary.say('ump_noball', { pri: 3 });
 }
 function finishBall(runs, wicket, headline, sub, cls, wide) {
-  const extra = del && del.noBall ? 'nb' : wide ? 'wd' : '';
+  const extra = del && del.noBall ? 'nb' : wide ? 'wd' : '', head0 = headline, sub0 = sub;
   state.runs += runs + (extra ? 1 : 0);
   if (extra) { state.extras++; state.rebowl++; if (extra === 'wd') state.wides++; else state.noBalls++; }
   else { state.balls++; state.rebowl = 0; }
@@ -2671,6 +2791,32 @@ function finishBall(runs, wicket, headline, sub, cls, wide) {
   if (runPlan) postUntil = Math.max(postUntil, runPlan.start + runPlan.n * runPlan.dur + 0.8);
   if (event && (event.type === 'field' || event.type === 'drop') && event.f && event.f.actor)
     postUntil = Math.max(postUntil, hitWall + event.t + (event.type === 'drop' ? 3.2 : 1.9));
+  commentate(runs, wicket, head0, sub0, extra);
+}
+/* what the commentary box says about the ball just finished (the umpire and fielders have their own calls) */
+function commentate(runs, wicket, head, sub, extra) {
+  const say = commentary.say, res = inningsOver(), ev = event && event.type;
+  if (res === 'won') return say('win', { pri: 4, delay: runs >= 4 ? 0.9 : 0.4 });
+  if (res === 'tie') return say(match.kind === 'super' ? 'super_tie' : 'tie', { pri: 4, delay: 0.8 });
+  if (res === 'lost') return say('lose', { pri: 4, delay: 1.0 });
+  if (extra === 'wd') { say('ump_wide', { pri: 3 }); return say('wide_call', { pri: 1, delay: 1.1, chance: 0.3 }); }
+  if (wicket) {
+    const key = ev === 'playedon' ? 'playedon' : head === 'Bowled' ? 'bowled' : head === 'LBW' ? 'lbw'
+      : head === 'Caught behind' ? 'caught_behind' : head === 'Caught and bowled' ? 'cnb' : 'caught';
+    return say(key, { pri: 3, delay: key === 'lbw' ? 0.75 : 0.25 });
+  }
+  if (head === 'Not out' && /free hit|no ball/.test(sub)) return say('saved', { pri: 3, delay: 0.5 });
+  if (runs === 6) return say(event && event.carry > 88 ? 'six_big' : 'six', { pri: 2, delay: 0.25 });
+  if (runs === 4) return say(swing && (swing.kind === 'edge' || swing.kind === 'topedge') ? 'edge_four' : 'four', { pri: 2, delay: 0.3 });
+  if (ev === 'drop') return say('dropped', { pri: 2, delay: 0.3 });
+  if (head === 'Hit on the helmet') return say('helmet', { pri: 2, delay: 0.3 });
+  if (ev === 'body' && head === 'Not out' && /pad|thigh/.test(event.part) && /Missing|over the stumps|outside off/i.test(event.verdict.why))
+    return say('notout_lbw', { pri: 2, delay: 1.0 });
+  if (head === 'Beaten' || head === 'Played and missed' || head === 'Over the bat') return say('beaten', { pri: 1, delay: 0.3, chance: 0.5 });
+  if (head === 'Good leave') return say('leave_good', { pri: 1, delay: 0.3, chance: 0.5 });
+  if (head === 'Left alone' && /^Just/.test(sub)) return say('leave_close', { pri: 1, delay: 0.3, chance: 0.8 });
+  if (runs === 1) return say('single', { pri: 1, delay: 0.5, chance: 0.25 });
+  if (runs >= 2) return say('two', { pri: 1, delay: 0.6, chance: 0.5 });
 }
 function inningsOver() {
   if (match.target == null) return null;
@@ -3202,7 +3348,7 @@ function tick(ms) {
 
 /* test hook, only with ?debug in the address */
 if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, set del(v) { del = v; }, get swing() { return swing; }, get event() { return event; },
-  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, get match() { return match; } };
+  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, commentary, get match() { return match; } };
 
 /* boot: idle scene behind the menu while the players load */
 state.hand = 1;
@@ -3216,6 +3362,11 @@ document.querySelectorAll('input[name="gfx"]').forEach(r => r.addEventListener('
   applyGfx();
 }));
 applyGfx();
+{ const r = document.getElementById('voice-' + commentary.lang); if (r) r.checked = true; }
+document.querySelectorAll('input[name="voice"]').forEach(r => r.addEventListener('change', () => {
+  commentary.setLang(r.value);
+  if (r.value !== 'off') { sound.unlock(); commentary.say('start', { pri: 4 }); }     // a taste of the voice
+}));
 resize();
 requestAnimationFrame(tick);
 $('btn-start').disabled = true; const startLabel = $('btn-start').textContent; $('btn-start').textContent = 'Loading players…';

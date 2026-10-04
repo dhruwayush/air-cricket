@@ -79,6 +79,7 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - **Floodlit look.** Physically based materials with filmic tone mapping. The floodlight tower behind the striker casts real shadows across the pitch from the batsmen, bowler, keeper and stumps, and the helmet, bat and grille reflect the lit stadium. The grass has close-up blade detail on top of the mown stripes, the pitch has cracks, footmarks and relief, and the white ball has a stitched seam that spins in flight.
 - **A living crowd.** The stands are drawn seat by seat in team colours. The crowd jumps with excitement, does a Mexican wave after a six, and fills with camera flashes on big moments, while flags wave along the front rows.
 - **Stadium sound, all synthesised in the browser with no audio files.** A murmuring crowd builds as the bowler runs in and hushes at the moment of delivery. It oohs at a play-and-miss, rises as a skier hangs in the air, groans at a dropped catch and roars for sixes and wickets, with applause, whistles, dhol drums and horns. The bat sounds different off the middle, the toe and the edge, and there are footsteps, bounces, pads, helmet knocks, stumps and gloves. Use the Sound button to mute.
+- **Commentary** in English or Hindi (or off, in the menu). The umpire calls no balls and wides, the fielders appeal for LBW, and a two-voice commentary box reacts to fours, sixes, wickets, drops, good leaves, free hits, the last ball and the result. Every line is in `tools/voice_lines.py`. Recorded clips play when they're in the build; any line without one is read by the device's own speech voice (Chrome on Android has English and Hindi voices; the Android app's web view has none, so it stays quiet until clips are added).
 - **Built for phones.** The timing meter is a slim vertical gauge on the left edge. On touch screens the view is framed in the space above the controls, and the keeper and slips fade while they stand in front of the lens. **Graphics** in the menu is Auto, High or Fast: Fast drops the shadows and draws fewer pixels, and Auto starts on High and switches to Fast for good if play runs slowly on your device.
 - The batsmen run between the wickets, and fielders pick up and throw back.
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
@@ -102,7 +103,9 @@ Your daily results, streak and wins in each mode are kept in the browser (`local
 | --- | --- |
 | `src/game.html` | The game source |
 | `tools/players.py` | Builds, rigs and animates the players in Blender and exports `tools/build/*.glb` |
-| `tools/build_page.py` | Embeds the models into `src/game.html` and writes `index.html` |
+| `tools/build_page.py` | Embeds the models and commentary into `src/game.html` and writes `index.html` |
+| `tools/voice_lines.py` | Every commentary line, and a script that records them with Edge's neural voices |
+| `sounds/voice/<group>/<id>.mp3` | Recorded commentary clips (optional; embedded when present) |
 
 ```sh
 pip install bpy==4.2.0            # Blender as a Python module (Python 3.11)
@@ -111,3 +114,15 @@ python3 tools/players.py rest      # quick still renders of both players (add --
 python3 tools/players.py bat pull,cut 0.167,0.45   # render preview frames to tools/preview/
 python3 tools/build_page.py        # rebuild index.html
 ```
+
+### Recording the commentary
+
+The clips are made with [edge-tts](https://github.com/rany2/edge-tts), which needs an internet connection to Microsoft's speech service:
+
+```sh
+pip install edge-tts
+python tools/voice_lines.py        # -> air-cricket-voices.zip (common/, en/, hi/)
+unzip air-cricket-voices.zip -d sounds/voice && python3 tools/build_page.py
+```
+
+On an Android phone, the same works in Termux: `pkg install python`, `pip install edge-tts`, `termux-setup-storage`, then download and run the script; the zip is copied to Downloads.

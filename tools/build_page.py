@@ -9,10 +9,28 @@ opening from disk). Any extra paths get the same page without the
 <html>/<head> wrapper (for hosts that add their own).
 """
 import base64
+import json
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def voice_tag():
+    """Commentary: the text of every line (tools/voice_lines.py), plus any recorded clips found in
+    sounds/voice/<group>/<id>.mp3, embedded as base64. Lines without a clip use the device's speech voice."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    from voice_lines import LINES
+    clips, n = {}, 0
+    for group, lines in LINES.items():
+        for line_id in lines:
+            f = os.path.join(ROOT, "sounds", "voice", group, line_id + ".mp3")
+            if os.path.exists(f) and os.path.getsize(f) > 0:
+                clips.setdefault(group, {})[line_id] = base64.b64encode(open(f, "rb").read()).decode("ascii")
+                n += 1
+    print("commentary clips embedded:", n, "of", sum(len(v) for v in LINES.values()))
+    return ("<script>window.AC_LINES=" + json.dumps(LINES, ensure_ascii=False, separators=(",", ":")) +
+            ";window.AC_VOICE=" + json.dumps(clips, separators=(",", ":")) + ";</script>")
 
 
 def main():
@@ -22,6 +40,7 @@ def main():
         with open(os.path.join(ROOT, "tools", "build", k + ".glb"), "rb") as f:
             assets[k] = base64.b64encode(f.read()).decode("ascii")
     tag = "<script>window.AC_ASSETS={" + ",".join(f'{k}:"{v}"' for k, v in assets.items()) + "};</script>"
+    tag += voice_tag()
     assert "<!--ASSETS-->" in src
     body = src.replace("<!--ASSETS-->", tag, 1)
 

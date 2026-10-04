@@ -261,30 +261,623 @@ def build_armature(name, with_bat):
 # bodies
 # --------------------------------------------------------------------------
 
-def leg_pads(s, color="#f3f1ea", thigh_flap=True):
-    pad = mat("pad" + color, color, 0.85)
-    kx = Vector(J["knee." + s]).x
-    out = [rbox((kx, -0.045, 0.3), (0.15, 0.085, 0.44), pad, "shin." + s, bevel=0.035)]
-    for z in (0.16, 0.27, 0.38):  # vertical rolls
-        out.append(cyl((kx - 0.045, -0.092, z - 0.1), (kx - 0.045, -0.092, z + 0.1), 0.012, pad, "shin." + s, verts=8))
-        out.append(cyl((kx + 0.045, -0.092, z - 0.1), (kx + 0.045, -0.092, z + 0.1), 0.012, pad, "shin." + s, verts=8))
-    out.append(ellipsoid((kx, -0.07, 0.56), (0.085, 0.055, 0.075), pad, "shin." + s))  # knee roll
-    if thigh_flap:
-        out.append(rbox((kx, -0.03, 0.66), (0.13, 0.06, 0.1), pad, "thigh." + s, bevel=0.025))
-    return out
+# --------------------------------------------------------------------------
+# detailed geometry helpers
+#   Everything is built in the rest pose and skinned by name: each vertex gets
+#   a small {bone: weight} dict, so joints (shoulders, elbows, knees) bend
+#   smoothly instead of being separate rigid pieces.
+# --------------------------------------------------------------------------
 
+def mesh_obj(name, verts, faces, face_mats, weights, smooth=True, recalc=True):
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(v) for v in verts], [], [tuple(f) for f in faces])
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    order = []
+    for m in face_mats:
+        if m.name not in [o.name for o in order]:
+            order.append(m)
+    for m in order:
+        me.materials.append(m)
+    idx = {m.name: i for i, m in enumerate(order)}
+    for p, m in zip(me.polygons, face_mats):
+        p.material_index = idx[m.name]
+        p.use_smooth = smooth
+    groups = {}
+    for vi, wd in enumerate(weights):
+        tot = sum(w for w in wd.values() if w > 0) or 1.0
+        for b, w in wd.items():
+            if w <= 1e-4:
+                continue
+            if b not in groups:
+                groups[b] = ob.vertex_groups.new(name=b)
+            groups[b].add([vi], w / tot, "REPLACE")
+    if recalc:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(me)
+        bm.free()
+    return ob
+
+
+def wb(t, a, b):
+    """Smooth hand-over from bone a (t <= 0) to bone b (t >= 1)."""
+    t = min(1.0, max(0.0, t))
+    t = t * t * (3 - 2 * t)
+    return {a: 1 - t, b: t}
+
+
+def tube(name, pts, prof, mat_fn, w_fn, n=16, caps=(True, True), up=(0, -1, 0)):
+    """Rings through pts. prof[i] is a radius or (side, up) radii. Ring angle a: 0 = side axis
+    (t x up), 90 deg = up axis. mat_fn(i, a) -> material for the band after ring i; w_fn(i) -> weights."""
+    pts = [Vector(p) for p in pts]
+    upv = Vector(up).normalized()
+    verts, faces, fm, ws, rings = [], [], [], [], []
+    for i, c in enumerate(pts):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        side = t.cross(upv)
+        if side.length < 1e-4:
+            side = t.cross(Vector((1, 0, 0)))
+        side.normalize()
+        u = side.cross(t).normalized()
+        r = prof[i]
+        rs, ru = r if isinstance(r, tuple) else (r, r)
+        ring = []
+        for k in range(n):
+            a = 2 * math.pi * k / n
+            verts.append(c + side * (math.cos(a) * rs) + u * (math.sin(a) * ru))
+            ws.append(w_fn(i))
+            ring.append(len(verts) - 1)
+        rings.append(ring)
+    for i in range(len(rings) - 1):
+        for k in range(n):
+            k2 = (k + 1) % n
+            faces.append((rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]))
+            fm.append(mat_fn(i, 2 * math.pi * (k + 0.5) / n))
+    for end in (0, 1):
+        if not caps[end]:
+            continue
+        ring, c, i = (rings[0], pts[0], 0) if end == 0 else (rings[-1], pts[-1], len(pts) - 1)
+        verts.append(c.copy())
+        ws.append(w_fn(i))
+        ci = len(verts) - 1
+        for k in range(n):
+            k2 = (k + 1) % n
+            faces.append((ring[k2], ring[k], ci) if end == 0 else (ring[k], ring[k2], ci))
+            fm.append(mat_fn(min(i, len(pts) - 2), 0.0))
+    return mesh_obj(name, verts, faces, fm, ws)
+
+
+def surface(name, fn, nu, nv, mat_fn, w_fn, thickness=0.0):
+    """Open grid surface p = fn(u, v), u, v in [0, 1]; optionally given thickness (solidify)."""
+    verts, faces, fm, ws = [], [], [], []
+    for j in range(nv + 1):
+        for i in range(nu + 1):
+            u, v = i / nu, j / nv
+            verts.append(fn(u, v))
+            ws.append(w_fn(u, v))
+    for j in range(nv):
+        for i in range(nu):
+            a = j * (nu + 1) + i
+            faces.append((a, a + 1, a + nu + 2, a + nu + 1))
+            fm.append(mat_fn((i + 0.5) / nu, (j + 0.5) / nv))
+    ob = mesh_obj(name, verts, faces, fm, ws, recalc=False)
+    if thickness:
+        mod = ob.modifiers.new("solid", "SOLIDIFY")
+        mod.thickness = thickness
+        mod.offset = 0.0
+        mod.use_even_offset = True
+        bpy.context.view_layer.objects.active = ob
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(ob.data)
+        bm.free()
+    return ob
+
+
+def weighted(ob, wd):
+    """Give a whole primitive the same blended weights (replacing its single bone group)."""
+    for g in list(ob.vertex_groups):
+        ob.vertex_groups.remove(g)
+    tot = sum(wd.values())
+    for b, w in wd.items():
+        g = ob.vertex_groups.new(name=b)
+        g.add(list(range(len(ob.data.vertices))), w / tot, "REPLACE")
+    return ob
+
+
+def lerpv(a, b, t):
+    return Vector(a).lerp(Vector(b), t)
+
+
+JP = lambda k: Vector(J[k])
+
+
+# --------------------------------------------------------------------------
+# body
+# --------------------------------------------------------------------------
+
+def torso(kind, shirt, trousers, belt, panel):
+    sections = [   # z, half-width, half-depth, depth offset (+ is the back)
+        (0.84, 0.124, 0.09, 0.006), (0.88, 0.157, 0.103, 0.006), (0.94, 0.168, 0.108, 0.006),
+        (0.995, 0.164, 0.104, 0.004), (1.035, 0.159, 0.101, 0.002), (1.09, 0.150, 0.099, 0.0),
+        (1.15, 0.155, 0.103, -0.003), (1.22, 0.169, 0.110, -0.006), (1.29, 0.183, 0.116, -0.007),
+        (1.35, 0.192, 0.116, -0.004), (1.395, 0.188, 0.111, 0.0), (1.42, 0.172, 0.104, 0.004),
+        (1.44, 0.148, 0.095, 0.006), (1.46, 0.124, 0.084, 0.008), (1.48, 0.09, 0.07, 0.008), (1.5, 0.062, 0.058, 0.008),
+    ]
+    pts = [(0, yo, z) for z, _, _, yo in sections]
+    prof = [(rx, ry) for _, rx, ry, _ in sections]
+
+    def mat_fn(i, a):
+        z = (sections[i][0] + sections[i + 1][0]) / 2
+        if z < 0.995:
+            return trousers
+        if z < 1.035:
+            return belt
+        if panel and 1.06 < z < 1.42 and abs(math.cos(a)) > 0.9:   # contrasting side panels on the shirt
+            return panel
+        return shirt
+
+    def w_fn(i):
+        z = sections[i][0]
+        if z < 1.02:
+            return {"hips": 1.0}
+        if z < 1.14:
+            return wb((z - 1.02) / 0.12, "hips", "spine")
+        if z < 1.24:
+            return {"spine": 1.0}
+        if z < 1.34:
+            return wb((z - 1.24) / 0.1, "spine", "chest")
+        if z < 1.48:
+            return {"chest": 1.0}
+        return wb((z - 1.48) / 0.04, "chest", "neck")
+
+    return tube(kind + "_torso", pts, prof, mat_fn, w_fn, n=28, up=(0, -1, 0))
+
+
+def arm(kind, s, sx, sleeve, cuff, skin, long_sleeve):
+    """Shoulder to wrist as one tube; long sleeves for the batsman, short for fielders."""
+    S, E, W = JP("shoulder." + s), JP("elbow." + s), JP("wrist." + s)
+    rows = []   # (point, (side, front) radius, weights, material of the band below)
+
+    def add(p, r, w, m):
+        rows.append((Vector(p), r, w, m))
+
+    top = S + Vector((-0.05 * sx, 0.0, -0.005))
+    add(top, (0.042, 0.05), {"chest": 0.6, "upper_arm." + s: 0.4}, sleeve)
+    loose = 0.005
+    for u, rs, rf in ((0.0, 0.05, 0.055), (0.12, 0.051, 0.055), (0.3, 0.049, 0.053), (0.5, 0.046, 0.049)):
+        w = {"chest": 0.3, "upper_arm." + s: 0.7} if u == 0 else {"upper_arm." + s: 1.0}
+        add(lerpv(S, E, u), (rs + loose, rf + loose), w, sleeve)
+    if not long_sleeve:   # short sleeve: hem, then bare arm
+        add(lerpv(S, E, 0.56), (0.047 + loose + 0.003, 0.05 + loose + 0.003), {"upper_arm." + s: 1.0}, sleeve)
+        add(lerpv(S, E, 0.565), (0.045, 0.047), {"upper_arm." + s: 1.0}, skin)
+        loose, m_ = 0.0, skin
+    else:
+        m_ = sleeve
+    for u, rs, rf in ((0.72, 0.045, 0.047), (0.88, 0.042, 0.044), (1.0, 0.04, 0.042)):
+        add(lerpv(S, E, u), (rs + loose, rf + loose), wb((u - 0.82) / 0.36, "upper_arm." + s, "forearm." + s), m_)
+    for u, rs, rf in ((0.12, 0.042, 0.046), (0.35, 0.041, 0.043), (0.62, 0.035, 0.035), (0.84, 0.03, 0.027)):
+        w = wb((u + 0.18) / 0.36, "upper_arm." + s, "forearm." + s) if u < 0.2 else {"forearm." + s: 1.0}
+        add(lerpv(E, W, u), (rs + loose, rf + loose), w, m_)
+    if long_sleeve:   # ribbed cuff over the wrist
+        add(lerpv(E, W, 0.86), (0.035, 0.033), {"forearm." + s: 1.0}, cuff)
+        add(lerpv(E, W, 1.0) + Vector((0, 0, -0.005)), (0.034, 0.032), {"forearm." + s: 0.7, "hand." + s: 0.3}, cuff)
+    else:
+        add(lerpv(E, W, 1.0) + Vector((0, 0, -0.012)), (0.027, 0.021), {"forearm." + s: 0.5, "hand." + s: 0.5}, skin)
+    pts = [r[0] for r in rows]
+    prof = [r[1] for r in rows]
+    return tube(f"{kind}_arm_{s}", pts, prof, lambda i, a: rows[i][3], lambda i: rows[i][2], n=16, up=(0, -1, 0))
+
+
+def leg(kind, s, sx, trousers, stripe):
+    H, K, A = JP("hip." + s), JP("knee." + s), JP("ankle." + s)
+    rows = []
+
+    def add(p, r, w):
+        rows.append((Vector(p), r, w))
+
+    lo = 0.012   # trousers sit a little off the leg
+    add(H + Vector((-0.012 * sx, 0.0, 0.05)), (0.08, 0.085), {"hips": 0.65, "thigh." + s: 0.35})
+    for u, rs, rf, w in ((0.06, 0.088, 0.09, {"hips": 0.35, "thigh." + s: 0.65}), (0.2, 0.084, 0.087, None),
+                         (0.42, 0.077, 0.078, None), (0.65, 0.068, 0.068, None), (0.84, 0.06, 0.06, None)):
+        add(lerpv(H, K, u), (rs + lo, rf + lo), w or {"thigh." + s: 1.0})
+    add(K, (0.056 + lo, 0.058 + lo), {"thigh." + s: 0.5, "shin." + s: 0.5})
+    for u, rs, rf, back in ((0.12, 0.054, 0.058, 0.004), (0.32, 0.055, 0.064, 0.012), (0.55, 0.05, 0.054, 0.008),
+                            (0.78, 0.042, 0.044, 0.002), (0.92, 0.038, 0.04, 0.0)):
+        w = wb((u + 0.16) / 0.32, "thigh." + s, "shin." + s) if u < 0.16 else {"shin." + s: 1.0}
+        add(lerpv(K, A, u) + Vector((0, back, 0)), (rs + lo, rf + lo), w)
+    add(A + Vector((0, 0, 0.015)), (0.046, 0.05), {"shin." + s: 0.7, "foot." + s: 0.3})
+    pts = [r[0] for r in rows]
+    prof = [r[1] for r in rows]
+
+    def mat_fn(i, a):
+        # a = 0 points to -X; the outer side of the left leg is +X
+        if stripe and math.cos(a) * -sx > 0.96:
+            return stripe
+        return trousers
+
+    return tube(f"{kind}_leg_{s}", pts, prof, mat_fn, lambda i: rows[i][2], n=18, up=(0, -1, 0))
+
+
+def shoe(s, sx, upper, sole, accent):
+    A = JP("ankle." + s)
+    x = A.x
+    secs = [   # y (toe is -y), half-width, centre height, half-height
+        (0.065, 0.03, 0.055, 0.045), (0.035, 0.04, 0.06, 0.056), (-0.02, 0.045, 0.055, 0.05),
+        (-0.08, 0.047, 0.045, 0.04), (-0.14, 0.044, 0.036, 0.031), (-0.185, 0.035, 0.03, 0.025),
+        (-0.212, 0.02, 0.027, 0.018),
+    ]
+    pts = [(x, y, cz) for y, _, cz, _ in secs]
+    prof = [(hw, hh) for _, hw, _, hh in secs]
+
+    def mat_fn(i, a):
+        y = (secs[i][0] + secs[i + 1][0]) / 2
+        if -0.12 < y < 0.03 and abs(math.cos(a)) > 0.8 and math.sin(a) > -0.2:
+            return accent
+        return upper
+
+    up_ = tube(f"shoe_{s}", pts, prof, mat_fn, lambda i: {"foot." + s: 1.0} if secs[i][0] < 0.02 else {"foot." + s: 0.85, "shin." + s: 0.15},
+               n=14, up=(0, 0, 1))
+    # sole: a flat slab under the whole foot, with a small heel
+    sp = [(x, y, 0.011) for y, _, _, _ in secs]
+    sprof = [(hw + 0.004, 0.011) for _, hw, _, _ in secs]
+    so = tube(f"sole_{s}", sp, sprof, lambda i, a: sole, lambda i: {"foot." + s: 1.0}, n=10, up=(0, 0, 1))
+    return [up_, so]
+
+
+def head_parts(skin, eye, hair, with_hair):
+    parts = []
+    parts.append(ellipsoid((0, 0.006, 1.69), (0.085, 0.098, 0.11), skin, "head", seg=24, rings=16))   # skull
+    parts.append(ellipsoid((0, -0.03, 1.628), (0.068, 0.072, 0.058), skin, "head", seg=18, rings=12))  # jaw
+    parts.append(ellipsoid((0, -0.074, 1.597), (0.03, 0.024, 0.024), skin, "head", seg=10, rings=8))  # chin
+    parts.append(ellipsoid((0, -0.1, 1.668), (0.016, 0.022, 0.028), skin, "head", seg=10, rings=8, rot=(0.25, 0, 0)))  # nose
+    for x in (0.087, -0.087):
+        parts.append(ellipsoid((x, 0.004, 1.68), (0.012, 0.026, 0.032), skin, "head", seg=10, rings=8))   # ears
+        parts.append(ellipsoid((x * 0.38, -0.088, 1.7), (0.012, 0.006, 0.007), eye, "head", seg=8, rings=6))  # eyes
+        parts.append(ellipsoid((x * 0.39, -0.093, 1.722), (0.02, 0.006, 0.005), hair, "head", seg=8, rings=4))  # brows
+    if with_hair:
+        h = ellipsoid((0, 0.008, 1.695), (0.09, 0.104, 0.116), hair, "head", seg=24, rings=16)
+        mw = h.matrix_world
+        bm = bmesh.new()
+        bm.from_mesh(h.data)
+        W = lambda v: mw @ v.co
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if W(v).z < 1.655 or (W(v).y < -0.05 and W(v).z < 1.745)
+                                   or (abs(W(v).x) > 0.07 and W(v).y < 0.02 and W(v).z < 1.69)], context="VERTS")
+        bm.to_mesh(h.data)
+        bm.free()
+        parts.append(h)
+    return parts
+
+
+def neck_and_collar(kind, skin, collar):
+    n = tube(kind + "_neck", [(0, 0.012, 1.44), (0, 0.008, 1.52), (0, 0.004, 1.6)], [(0.054, 0.05), (0.05, 0.047), (0.048, 0.046)],
+             lambda i, a: skin, lambda i: [{"chest": 0.6, "neck": 0.4}, {"neck": 1.0}, {"neck": 0.6, "head": 0.4}][i], n=14, up=(0, -1, 0))
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.064, minor_radius=0.012, major_segments=28, minor_segments=8,
+                                     location=(0, 0.004, 1.478), rotation=(-0.18, 0, 0))
+    c = bpy.context.active_object
+    c.scale = (1.0, 0.86, 1.0)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    _finish(c, collar, "chest")
+    weighted(c, {"chest": 0.75, "neck": 0.25})
+    return [n, c]
+
+
+def fielder_hand(s, sx, skin):
+    """Palm, four slightly curled fingers and a thumb, on the hand bone (fingers point down)."""
+    W = JP("wrist." + s)
+    parts = [ellipsoid(W + Vector((0.004 * sx, -0.008, -0.045)), (0.016, 0.038, 0.045), skin, "hand." + s, seg=12, rings=8)]
+    for k, dy in enumerate((-0.03, -0.012, 0.006, 0.022)):
+        L = (0.05, 0.056, 0.052, 0.042)[k]
+        base = W + Vector((0.002 * sx, dy - 0.008, -0.085))
+        mid = base + Vector((-0.006 * sx, -0.004, -L * 0.55))
+        tip = mid + Vector((-0.014 * sx, -0.004, -L * 0.42))
+        parts.append(tube(f"finger_{s}{k}", [base, mid, tip], [0.0085, 0.008, 0.0068], lambda i, a: skin,
+                          lambda i: {"hand." + s: 1.0}, n=7))
+    th0 = W + Vector((-0.008 * sx, -0.035, -0.035))
+    parts.append(tube(f"thumb_{s}", [th0, th0 + Vector((-0.012 * sx, -0.016, -0.03)), th0 + Vector((-0.02 * sx, -0.02, -0.055))],
+                      [0.011, 0.0095, 0.008], lambda i, a: skin, lambda i: {"hand." + s: 1.0}, n=7))
+    return parts
+
+
+def batting_glove(s, sx, glove, rolls, cuff):
+    """The hand bone runs along the bat handle, so the glove is a mitt around that line: a cuffed wrist,
+    padded finger rolls wrapping round the handle, and a thumb roll."""
+    W, F = JP("wrist." + s), JP("fingers." + s)
+    d = (F - W).normalized()
+    parts = [tube(f"glove_cuff_{s}", [W - d * 0.045, W + d * 0.005], [(0.047, 0.05), (0.046, 0.049)],
+                  lambda i, a: cuff, lambda i: [{"forearm." + s: 0.4, "hand." + s: 0.6}, {"hand." + s: 1.0}][i], n=16)]
+    parts.append(tube(f"glove_body_{s}", [W, W + d * 0.04, F, F + d * 0.012],
+                      [(0.044, 0.047), (0.045, 0.049), (0.04, 0.045), (0.026, 0.03)],
+                      lambda i, a: glove, lambda i: {"hand." + s: 1.0}, n=16))
+    for k in range(4):   # finger rolls: padded bands round the handle on the back of the glove
+        c = W + d * (0.03 + 0.017 * k)
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.043 - 0.002 * k, minor_radius=0.0105, major_segments=18,
+                                         minor_segments=6, location=c)
+        r = bpy.context.active_object
+        r.scale = (1.0, 1.1, 0.85)
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+        parts.append(_finish(r, rolls, "hand." + s))
+    t0 = W + d * 0.02 + Vector((0, -0.045, 0))
+    parts.append(tube(f"glove_thumb_{s}", [t0, t0 + d * 0.035 + Vector((0, -0.006, 0)), t0 + d * 0.06 + Vector((0, 0.004, 0))],
+                      [0.013, 0.012, 0.009], lambda i, a: rolls, lambda i: {"hand." + s: 1.0}, n=8))
+    return parts
+
+
+def leg_pad(s, sx, pad, strap, buckle, top=0.66, wings=1.85, n_straps=3, rib=0.006):
+    """A batting pad: a curved shell over the front of the shin with vertical canes, a three-roll knee,
+    side wings and a top flap over the thigh, held on by straps round the back of the calf."""
+    K, A = JP("knee." + s), JP("ankle." + s)
+    z0 = 0.12
+
+    def axis(z):
+        t = (z - A.z) / (K.z - A.z)
+        return Vector((K.x, A.y + (K.y - A.y) * t - 0.01, z))
+
+    def half_angle(z):
+        if z < 0.5:
+            return wings
+        if z < 0.6:
+            return wings - (wings - 1.3) * (z - 0.5) / 0.1
+        return 1.3 - 0.35 * (z - 0.6) / max(0.01, top - 0.6)
+
+    def fn(u, v):
+        z = z0 + (top - z0) * v
+        th = (u * 2 - 1) * half_angle(z)
+        R = 0.078 + 0.012 * (th / wings) ** 2
+        if abs(th) < 1.35 and (z < 0.47 or z > 0.6):                        # vertical canes
+            R += rib * (0.5 + 0.5 * math.cos(2 * math.pi * th / 0.34)) * math.cos(th * 0.9)
+        if 0.47 <= z <= 0.6:                                                   # knee rolls
+            R += 0.016 * (0.5 + 0.5 * math.cos(2 * math.pi * (z - 0.47) / 0.043)) * max(0.0, math.cos(th * 0.8))
+        if z < 0.17:                                                           # instep: curls in at the bottom
+            R -= 0.25 * (0.17 - z)
+        c = axis(z)
+        return c + Vector((math.sin(th) * R * sx, -math.cos(th) * R, 0))
+
+    def w_fn(u, v):
+        z = z0 + (top - z0) * v
+        if z < 0.56:
+            return {"shin." + s: 1.0}
+        t = (z - 0.56) / max(0.01, top - 0.56)
+        return {"shin." + s: 1 - 0.7 * t, "thigh." + s: 0.7 * t}
+
+    parts = [surface(f"pad_{s}", fn, 28, 30, lambda u, v: pad, w_fn, thickness=0.022)]
+    zs = (0.2, 0.32, 0.43)[:n_straps] if n_straps > 2 else (0.22, 0.4)
+    for z in zs:   # straps: from wing to wing round the back of the calf
+        c = axis(z) + Vector((0, 0.012, 0))
+        th0 = wings * 0.92
+        pts = []
+        for k in range(17):
+            th = th0 + (2 * math.pi - 2 * th0) * k / 16
+            pts.append(c + Vector((math.sin(th) * 0.083 * sx, -math.cos(th) * 0.088, 0)))
+        parts.append(tube(f"strap_{s}{z}", pts, [(0.003, 0.012)] * len(pts), lambda i, a: strap,
+                          lambda i: {"shin." + s: 1.0}, n=6, up=(0, 0, 1)))
+        bx = pts[3]
+        parts.append(rbox(tuple(bx), (0.012, 0.012, 0.022), buckle, "shin." + s, bevel=0.003))
+    return parts
+
+
+def helmet_parts(shell, grille, strap):
+    C = Vector((0, 0.006, 1.698))
+    parts = []
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=20, radius=1, location=C)
+    h = bpy.context.active_object
+    h.scale = (0.124, 0.136, 0.13)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bm = bmesh.new()
+    bm.from_mesh(h.data)
+    # the rim drops from the brow at the front to the nape at the back
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < 1.655 - 0.42 * v.co.y], context="VERTS")
+    bm.to_mesh(h.data)
+    bm.free()
+    _finish(h, shell, "head")
+    mod = h.modifiers.new("solid", "SOLIDIFY")
+    mod.thickness = 0.009
+    mod.offset = 1.0
+    bpy.context.view_layer.objects.active = h
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    parts.append(h)
+    parts.append(ellipsoid((0, 0.0, 1.828), (0.022, 0.12, 0.012), shell, "head", seg=10, rings=6))          # crest ridge
+    for x in (-0.05, 0.05):                                                                              # vents
+        parts.append(ellipsoid((x, 0.03, 1.818), (0.012, 0.04, 0.008), mat("vent", "#05080d", 0.6), "head", seg=8, rings=4, rot=(0.0, x * 4, 0)))
+    # peak
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=28, ring_count=8, radius=1, location=(0, -0.085, 1.722))
+    pk = bpy.context.active_object
+    pk.scale = (0.122, 0.09, 0.013)
+    pk.rotation_euler = (0.16, 0, 0)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bm = bmesh.new()
+    bm.from_mesh(pk.data)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.y > -0.07], context="VERTS")
+    bm.to_mesh(pk.data)
+    bm.free()
+    parts.append(_finish(pk, shell, "head"))
+    # ear pieces with a bolt for the grille
+    for sx in (1, -1):
+        parts.append(ellipsoid((0.114 * sx, -0.014, 1.655), (0.012, 0.046, 0.05), shell, "head", seg=14, rings=10))
+        parts.append(cyl((0.12 * sx, -0.03, 1.66), (0.127 * sx, -0.03, 1.66), 0.007, grille, "head", verts=10))
+    # grille: three curved bars round the face and three uprights
+    def arc(z, rx, ry, a0, a1, yo=0.0, sag=0.0):
+        out = []
+        for k in range(13):
+            a = a0 + (a1 - a0) * k / 12
+            out.append(Vector((math.sin(a) * rx, -math.cos(a) * ry + yo, z - sag * math.cos(a) ** 2)))
+        return out
+    bars = [arc(1.706, 0.123, 0.147, -1.25, 1.25), arc(1.655, 0.122, 0.15, -1.3, 1.3), arc(1.605, 0.11, 0.138, -1.2, 1.2, sag=0.012)]
+    for k, pts in enumerate(bars):
+        parts.append(tube(f"grille_{k}", pts, [0.0045] * len(pts), lambda i, a: grille, lambda i: {"head": 1.0}, n=6, up=(0, 0, 1)))
+    for k, a in enumerate((-0.42, 0.0, 0.42)):
+        top_ = Vector((math.sin(a) * 0.123, -math.cos(a) * 0.147, 1.706))
+        bot = Vector((math.sin(a) * 0.11, -math.cos(a) * 0.138, 1.605 - 0.012 * math.cos(a) ** 2))
+        mid = (top_ + bot) / 2 + Vector((0, -0.006, 0))
+        parts.append(tube(f"grille_v{k}", [top_, mid, bot], [0.0042] * 3, lambda i, a: grille, lambda i: {"head": 1.0}, n=6))
+    # neck guard at the back, and the chin strap
+    # stem guard: two curved plates hanging from the back of the rim, following the neck
+    for side in (-1, 1):
+        def plate(u, v, side=side):
+            a = side * (0.12 + 0.75 * u)                  # radians round from straight behind
+            z = 1.6 - 0.075 * v
+            r = 0.083 - 0.012 * v
+            return Vector((math.sin(a) * r, 0.012 + math.cos(a) * r, z))
+        parts.append(surface(f"stem_guard_{side}", plate, 6, 4, lambda u, v: shell, lambda u, v: {"head": 1.0}, thickness=0.01))
+    parts.append(tube("chin_strap", [(-0.112, -0.02, 1.625), (-0.06, -0.06, 1.585), (0, -0.07, 1.57), (0.06, -0.06, 1.585), (0.112, -0.02, 1.625)],
+                      [(0.006, 0.0025)] * 5, lambda i, a: strap, lambda i: {"head": 1.0}, n=6, up=(0, 0, 1)))
+    return parts
+
+
+def bat_parts(willow, grip, label, label2):
+    top = BAT_TOP
+    xf = top.x - 0.02                          # face of the blade (it faces -x)
+    zs, zt = top.z - 0.31, top.z - 0.86        # shoulder and toe
+    rings, n_side = [], 9
+    parts = []
+
+    def section(z):
+        t = (z - zt) / (zs - zt)               # 0 at the toe, 1 at the shoulder
+        w = 0.054 * (1 - 0.85 * max(0.0, (0.035 - t) / 0.035) ** 2)
+        spine = 0.042 + 0.023 * math.sin(math.pi * min(1.0, max(0.0, (t - 0.04) / 0.8)))
+        edge = 0.036 - 0.014 * t
+        pts = []
+        for k in range(n_side + 1):            # the flat face, edge to edge
+            y = w - 2 * w * k / n_side
+            pts.append(Vector((xf, top.y + y * 0.96, z)))
+        for k in range(n_side + 1):            # the back: thick edges rising to the spine
+            y = -w + 2 * w * k / n_side
+            q = abs(y) / w
+            pts.append(Vector((xf + edge + (spine - edge) * (1 - q ** 1.6) ** 0.9 - 0.006 * q ** 6, top.y + y, z)))
+        return pts
+
+    verts, faces, fm, ws = [], [], [], []
+    nz = 40
+    for j in range(nz + 1):
+        z = zt + (zs - zt) * j / nz
+        ring = section(z)
+        rings.append(list(range(len(verts), len(verts) + len(ring))))
+        verts += ring
+        ws += [{"bat": 1.0}] * len(ring)
+    m = len(rings[0])
+    for j in range(nz):
+        t = (j + 0.5) / nz
+        for k in range(m):
+            k2 = (k + 1) % m
+            faces.append((rings[j][k], rings[j][k2], rings[j + 1][k2], rings[j + 1][k]))
+            face_side = k < n_side
+            if face_side and 0.66 < t < 0.8:
+                fm.append(label if 0.68 < t < 0.78 else label2)
+            elif not face_side and 0.4 < t < 0.62 and n_side + 2 < k < 2 * n_side - 1:
+                fm.append(label)
+            else:
+                fm.append(willow)
+    for ring, z in ((rings[0], zt), (rings[-1], zs)):
+        c = sum((verts[i] for i in ring), Vector()) / len(ring)
+        verts.append(c)
+        ws.append({"bat": 1.0})
+        ci = len(verts) - 1
+        for k in range(m):
+            faces.append((ring[k], ring[(k + 1) % m], ci))
+            fm.append(willow)
+    parts.append(mesh_obj("blade", verts, faces, fm, ws))
+    # shoulders: blade narrowing into the splice and handle
+    sh = []
+    for k in range(6):
+        u = k / 5
+        z = zs + 0.05 * u
+        sh.append((Vector((xf + 0.02, top.y, z)), (0.052 * (1 - u) + 0.019 * u, 0.026 * (1 - u) + 0.018 * u)))
+    parts.append(tube("shoulders", [p for p, _ in sh], [r for _, r in sh], lambda i, a: willow,
+                      lambda i: {"bat": 1.0}, n=14, up=(1, 0, 0)))
+    # handle with a ribbed rubber grip and an end cap
+    hp, hr = [], []
+    for k in range(61):
+        z = zs + 0.04 + (top.z + 0.012 - zs - 0.04) * k / 60
+        hp.append(Vector((xf + 0.02, top.y, z)))
+        hr.append(0.0172 + (0.0011 if k % 2 else 0.0))
+    parts.append(tube("handle", hp, hr, lambda i, a: grip, lambda i: {"bat": 1.0}, n=12))
+    return parts
+
+
+def cap_parts(cap, button):
+    c = ellipsoid((0, 0.006, 1.712), (0.094, 0.106, 0.112), cap, "head", seg=24, rings=14)
+    cut_below(c, 1.698)
+    parts = [c, ellipsoid((0, 0.0, 1.823), (0.011, 0.011, 0.007), button, "head", seg=8, rings=4)]
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=8, radius=1, location=(0, -0.07, 1.708))
+    b = bpy.context.active_object
+    b.scale = (0.088, 0.1, 0.011)
+    b.rotation_euler = (0.12, 0, 0)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bm = bmesh.new()
+    bm.from_mesh(b.data)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.y > -0.05], context="VERTS")
+    bm.to_mesh(b.data)
+    bm.free()
+    parts.append(_finish(b, cap, "head"))
+    return parts
+
+
+def shirt_number(text, torso_ob, colour):
+    """A number printed on the back of the shirt, shrink-wrapped onto it."""
+    cu = bpy.data.curves.new("num", "FONT")
+    cu.body = text
+    cu.size = 0.15
+    cu.align_x = "CENTER"
+    cu.align_y = "CENTER"
+    ob = bpy.data.objects.new("num", cu)
+    bpy.context.collection.objects.link(ob)
+    # text faces +z: turn it to face backwards (+y), reading left to right for someone behind
+    ob.matrix_world = Matrix(((-1, 0, 0, 0), (0, 0, 1, 0.2), (0, 1, 0, 1.285), (0, 0, 0, 1)))
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.convert(target="MESH")
+    ob = bpy.context.active_object
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces)
+    bmesh.ops.subdivide_edges(bm, edges=[e for e in bm.edges if e.calc_length() > 0.02], cuts=2, use_grid_fill=False)
+    bm.to_mesh(ob.data)
+    bm.free()
+    sw = ob.modifiers.new("wrap", "SHRINKWRAP")
+    sw.target = torso_ob
+    sw.wrap_method = "PROJECT"
+    sw.use_negative_direction = True
+    sw.use_project_y = True
+    sw.offset = 0.0025
+    bpy.ops.object.modifier_apply(modifier=sw.name)
+    ob.data.materials.append(colour)
+    for p in ob.data.polygons:
+        p.use_smooth = True
+    gs, gc = ob.vertex_groups.new(name="spine"), ob.vertex_groups.new(name="chest")
+    for v in ob.data.vertices:   # follow the shirt's own spine/chest blend
+        w = wb((v.co.z - 1.24) / 0.1, "spine", "chest")
+        gs.add([v.index], w["spine"], "REPLACE")
+        gc.add([v.index], w["chest"], "REPLACE")
+    return ob
+
+
+# --------------------------------------------------------------------------
+# the two characters
+# --------------------------------------------------------------------------
 
 def keeper_gear_parts():
     """Wicket-keeping pads and big gauntlets, skinned to the fielder rig and shown only on the keeper."""
     parts = []
+    pad = mat("keeper_pad", "#f1efe6", 0.8)
+    strap = mat("keeper_strap", "#16244d", 0.7)
+    buckle = mat("buckle", "#c9ccd1", 0.35, 0.8)
     glove = mat("keeper_glove", "#e8dcc2", 0.75)
     web = mat("keeper_web", "#c9b48a", 0.8)
-    for s in ("L", "R"):
-        parts += leg_pads(s, "#f1efe6", thigh_flap=False)
-        w = Vector(J["wrist." + s])
+    for s, sx in (("L", 1), ("R", -1)):
+        parts += leg_pad(s, sx, pad, strap, buckle, top=0.6, wings=1.55, n_straps=2, rib=0.005)
+        w = JP("wrist." + s)
         parts.append(limb(w + Vector((0, 0, 0.05)), w + Vector((0, 0, -0.01)), 0.052, 0.058, glove, "hand." + s, overlap=0.0))  # cuff
-        parts.append(ellipsoid(w + Vector((0, -0.012, -0.075)), (0.068, 0.058, 0.092), glove, "hand." + s))              # mitt
-        parts.append(ellipsoid(w + Vector((0, -0.052, -0.085)), (0.05, 0.02, 0.07), web, "hand." + s, seg=12, rings=8))  # palm
+        parts.append(ellipsoid(w + Vector((0, -0.012, -0.075)), (0.068, 0.058, 0.092), glove, "hand." + s, seg=18, rings=12))  # mitt
+        parts.append(ellipsoid(w + Vector((0, -0.052, -0.085)), (0.05, 0.02, 0.07), web, "hand." + s, seg=14, rings=8))   # palm
+        for k in range(4):   # finger seams on the back of the mitt
+            parts.append(ellipsoid(w + Vector((-0.03 + 0.02 * k, 0.046, -0.09)), (0.008, 0.012, 0.06), glove, "hand." + s, seg=8, rings=6))
     return parts
 
 
@@ -292,99 +885,39 @@ def build_body(kind):
     """kind: 'batsman' or 'fielder'. Returns list of mesh objects (weighted by bone name)."""
     bat = kind == "batsman"
     k = kind + "_"
-    skin = mat("skin", "#a06d4a", 0.6)
-    shirt = mat(k + "shirt", "#f0a431" if bat else "#3462d6", 0.75)
-    trousers = mat(k + "trousers", "#1c2d59" if bat else "#16244d", 0.8)
-    shoe = mat("shoe", "#ecebe6", 0.6)
+    skin = mat("skin", "#9a6644", 0.55)
+    shirt = mat(k + "shirt", "#f0a431" if bat else "#3462d6", 0.82)
+    panel = mat(k + "panel", "#1c2d59" if bat else "#1f3f9e", 0.8)
+    trousers = mat(k + "trousers", "#1c2d59" if bat else "#16244d", 0.82)
     trim = mat(k + "trim", "#1c2d59" if bat else "#f0c040", 0.7)
+    shoe_up = mat("shoe", "#eeeee9", 0.5)
+    sole = mat("sole", "#2a2a2a", 0.85)
+    accent = mat(k + "shoe_accent", "#1c2d59" if bat else "#f0c040", 0.5)
+    eye = mat("eye", "#1d1410", 0.3)
+    hair = mat("hair", "#17110d", 0.7)
     parts = []
-    P = lambda k: Vector(J[k])
 
-    # torso: one lofted shape, trousers below the belt, shirt above
-    torso_sections = [
-        (0.84, 0.13, 0.09, 0.0), (0.9, 0.162, 0.104, 0.0), (0.97, 0.168, 0.106, 0.0),
-        (1.0, 0.162, 0.103, 0.0), (1.035, 0.158, 0.102, 0.0), (1.09, 0.152, 0.1, 0.0),
-        (1.18, 0.164, 0.106, -0.004), (1.28, 0.183, 0.114, -0.008), (1.37, 0.19, 0.114, -0.004),
-        (1.43, 0.172, 0.1, 0.004), (1.47, 0.12, 0.08, 0.008), (1.5, 0.07, 0.062, 0.008),
-    ]
-
-    def torso_mat(z):
-        return trousers if z < 1.0 else trim if z < 1.035 else shirt
-
-    def torso_w(z):
-        if z < 1.02:
-            return {"hips": 1.0}
-        if z < 1.14:
-            return blend(z, 1.02, 1.14, "hips", "spine")
-        if z < 1.24:
-            return {"spine": 1.0}
-        if z < 1.34:
-            return blend(z, 1.24, 1.34, "spine", "chest")
-        if z < 1.48:
-            return {"chest": 1.0}
-        return blend(z, 1.48, 1.52, "chest", "neck")
-
-    parts.append(loft(torso_sections, 24, torso_mat, torso_w, kind + "_torso"))
-    # neck + head
-    parts.append(limb((0, 0.004, 1.46), (0, 0.0, 1.6), 0.056, 0.05, skin, "neck"))
-    parts.append(ellipsoid((0, -0.004, 1.685), (0.09, 0.1, 0.117), skin, "head", seg=20, rings=14))
-    parts.append(ellipsoid((0, -0.098, 1.66), (0.018, 0.02, 0.028), skin, "head", seg=8, rings=6))  # nose
-    for x in (0.089, -0.089):
-        parts.append(ellipsoid((x, 0.0, 1.68), (0.014, 0.024, 0.03), skin, "head", seg=8, rings=6))  # ears
-
+    t = torso(kind, shirt, trousers, trim, panel)
+    parts.append(t)
+    parts += neck_and_collar(kind, skin, trim)
+    parts += head_parts(skin, eye, hair, with_hair=not bat)
     for s, sx in (("L", 1), ("R", -1)):
-        parts.append(ellipsoid(P("shoulder." + s) + Vector((-0.01 * sx, 0, -0.02)), (0.066, 0.064, 0.062), shirt, "chest"))
-        parts.append(limb(P("shoulder." + s), P("elbow." + s), 0.058, 0.047, shirt, "upper_arm." + s))
-        parts.append(ellipsoid(P("elbow." + s), (0.046, 0.046, 0.046), shirt, "forearm." + s, seg=10, rings=8))
-        parts.append(limb(P("elbow." + s), P("wrist." + s), 0.044, 0.036, shirt, "forearm." + s))
+        parts.append(weighted(ellipsoid(JP("shoulder." + s) + Vector((-0.016 * sx, 0.0, -0.02)), (0.052, 0.058, 0.062), shirt, "chest", seg=16, rings=10),
+                              {"chest": 0.3, "upper_arm." + s: 0.7}))
+        parts.append(arm(kind, s, sx, shirt, trim, skin, long_sleeve=bat))
+        parts.append(leg(kind, s, sx, trousers, None if bat else trim))
+        parts += shoe(s, sx, shoe_up, sole, accent)
         if bat:
-            parts.append(limb(P("wrist." + s) + Vector((0, 0, 0.03)), P("wrist." + s) + Vector((0, 0, -0.02)), 0.05, 0.05, trim, "hand." + s, overlap=0.0))
-            parts.append(ellipsoid(P("wrist." + s) + Vector((0, -0.01, -0.06)), (0.052, 0.046, 0.066), mat("glove", "#f4f2ec", 0.8), "hand." + s))
+            parts += batting_glove(s, sx, mat("glove", "#f4f2ec", 0.8), mat("glove_roll", "#e9e6dd", 0.85), trim)
+            parts += leg_pad(s, sx, mat("pad", "#f3f1ea", 0.82), mat("pad_strap", "#e4e2db", 0.75), mat("buckle", "#c9ccd1", 0.35, 0.8))
         else:
-            parts.append(limb(P("wrist." + s) + Vector((0, 0, 0.02)), P("wrist." + s), 0.038, 0.035, shirt, "forearm." + s, overlap=0.0))
-            parts.append(ellipsoid(P("wrist." + s) + Vector((0, -0.008, -0.055)), (0.037, 0.026, 0.058), skin, "hand." + s))
-        # legs
-        parts.append(limb(P("hip." + s) + Vector((0, 0, 0.03)), P("knee." + s), 0.086, 0.062, trousers, "thigh." + s))
-        parts.append(ellipsoid(P("knee." + s), (0.06, 0.06, 0.06), trousers, "shin." + s, seg=10, rings=8))
-        parts.append(limb(P("knee." + s), P("ankle." + s) + Vector((0, 0, 0.02)), 0.058, 0.042, trousers, "shin." + s))
-        parts.append(ellipsoid(P("ankle." + s) + Vector((0, -0.05, -0.045)), (0.052, 0.12, 0.045), shoe, "foot." + s))
-        parts.append(ellipsoid(P("ankle." + s) + Vector((0, -0.03, -0.075)), (0.055, 0.125, 0.018), mat("sole", "#2a2a2a", 0.9), "foot." + s))
-        if bat:
-            parts += leg_pads(s)
-
+            parts += fielder_hand(s, sx, skin)
     if bat:
-        helmet = mat("helmet", "#16244a", 0.35)
-        grille = mat("grille", "#b7bec6", 0.3, 0.8)
-        h = ellipsoid((0, 0.005, 1.7), (0.122, 0.13, 0.125), helmet, "head", seg=24, rings=16)
-        cut_below(h, 1.63)
-        parts.append(h)
-        parts.append(ellipsoid((0, -0.12, 1.745), (0.1, 0.06, 0.012), helmet, "head", seg=16, rings=6))  # peak
-        for z in (1.6, 1.635, 1.67, 1.705):
-            parts.append(cyl((-0.085, -0.13, z), (0.085, -0.13, z), 0.0055, grille, "head", verts=6))
-        for x in (-0.03, 0.03):
-            parts.append(cyl((x, -0.132, 1.59), (x, -0.13, 1.72), 0.0055, grille, "head", verts=6))
-        for x in (-0.09, 0.09):
-            parts.append(cyl((x, -0.12, 1.6), (x * 1.25, -0.02, 1.64), 0.0065, grille, "head", verts=6))
-        # bat
-        willow = mat("willow", "#e2c38b", 0.55)
-        grip = mat("grip", "#1d1d1d", 0.9)
-        top = BAT_TOP
-        parts.append(cyl(top + Vector((0, 0, 0.02)), top - Vector((0, 0, 0.29)), 0.0175, grip, "bat", verts=10))
-        blade = rbox(tuple(top - Vector((0, 0, 0.57))), (0.042, 0.108, 0.56), willow, "bat", bevel=0.012)
-        # thicken the back (splice) a little: push vertices on +X face toward the middle top
-        for v in blade.data.vertices:
-            if v.co.x > top.x + 0.015:
-                zt = (v.co.z - (top.z - 0.85)) / 0.56
-                v.co.x += 0.018 * math.sin(max(0.0, min(1.0, zt)) * math.pi) * (1 - abs(v.co.y - top.y) / 0.06)
-        parts.append(blade)
-        parts.append(ellipsoid(tuple(top - Vector((0, 0, 0.3))), (0.022, 0.02, 0.03), willow, "bat", seg=10, rings=6))  # shoulders
+        parts += helmet_parts(mat("helmet", "#16244a", 0.32), mat("grille", "#b7bec6", 0.28, 0.85), mat("strap", "#111111", 0.7))
+        parts += bat_parts(mat("willow", "#e2c38b", 0.5), mat("grip", "#1d1d1d", 0.9), mat("bat_label", "#1c2d59", 0.45), mat("bat_label2", "#f0a431", 0.45))
+        parts.append(shirt_number("7", t, trim))
     else:
-        cap = mat("cap", "#16244d", 0.7)
-        c = ellipsoid((0, 0.005, 1.715), (0.1, 0.108, 0.11), cap, "head", seg=20, rings=12)
-        cut_below(c, 1.705)
-        parts.append(c)
-        parts.append(ellipsoid((0, -0.12, 1.71), (0.08, 0.075, 0.01), cap, "head", seg=16, rings=6))
-        parts.append(ellipsoid((0, 0.0, 1.805), (0.012, 0.012, 0.008), trim, "head", seg=8, rings=4))
+        parts += cap_parts(mat("cap", "#16244d", 0.7), trim)
     return parts
 
 
@@ -415,10 +948,116 @@ def build_character(kind):
         gm = gear.modifiers.new("rig", "ARMATURE")
         gm.object = rig
         EXTRAS[kind].append(gear)
+    if BAKE_AO:
+        bake_ao(body, rig, hide=EXTRAS[kind])
+        for e in EXTRAS[kind]:
+            bake_ao(e, rig)
+    for ob in [body] + EXTRAS[kind]:
+        collapse_materials(ob)
     return rig, body
 
 
 EXTRAS = {}
+BAKE_AO = True
+AO_FLOOR = 0.4      # the darkest crease keeps this much of its colour
+
+
+FINISHES = {   # name: (roughness, metalness); every material folds into one of these
+    "fin_matte": (0.82, 0.0),     # cloth, pads, grip, soles
+    "fin_satin": (0.55, 0.0),     # skin, shoes, willow
+    "fin_gloss": (0.32, 0.0),     # helmet shell, eyes, bat stickers
+    "fin_metal": (0.3, 0.85),     # grille, buckles
+}
+
+
+def finish_of(m):
+    b = m.node_tree.nodes.get("Principled BSDF")
+    r, mt = b.inputs["Roughness"].default_value, b.inputs["Metallic"].default_value
+    if mt > 0.5:
+        return "fin_metal"
+    return "fin_matte" if r >= 0.7 else "fin_satin" if r >= 0.47 else "fin_gloss"
+
+
+def collapse_materials(ob):
+    """Each player becomes a handful of draw calls instead of twenty: every face's colour (times the baked
+    occlusion) goes into a per-corner vertex colour, and faces share one material per finish."""
+    me = ob.data
+    ao = me.color_attributes.get("AO")
+    col = me.color_attributes.new("Col", "FLOAT_COLOR", "CORNER")
+    fins = {}
+    for m in me.materials:
+        f = finish_of(m)
+        if f not in fins:
+            fm = bpy.data.materials.get(f)
+            if fm is None:
+                fm = bpy.data.materials.new(f)
+                fm.use_nodes = True
+                bsdf = fm.node_tree.nodes.get("Principled BSDF")
+                bsdf.inputs["Base Color"].default_value = (1, 1, 1, 1)
+                bsdf.inputs["Roughness"].default_value, bsdf.inputs["Metallic"].default_value = FINISHES[f]
+                va = fm.node_tree.nodes.new("ShaderNodeVertexColor")      # so Blender previews show the colours too
+                va.layer_name = "Col"
+                fm.node_tree.links.new(va.outputs["Color"], bsdf.inputs["Base Color"])
+            fins[f] = fm
+    order = list(fins)
+    remap = []
+    for m in me.materials:
+        bc = m.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value
+        remap.append((order.index(finish_of(m)), (bc[0], bc[1], bc[2])))
+    new_idx = []
+    for p in me.polygons:
+        idx, c = remap[p.material_index]
+        for li in p.loop_indices:
+            a = ao.data[me.loops[li].vertex_index].color[0] if ao else 1.0
+            col.data[li].color = (c[0] * a, c[1] * a, c[2] * a, 1.0)
+        new_idx.append(idx)
+    me.materials.clear()                 # (this resets every face to slot 0, so set them again after)
+    for f in order:
+        me.materials.append(fins[f])
+    for p, idx in zip(me.polygons, new_idx):
+        p.material_index = idx
+    if ao:
+        me.color_attributes.remove(ao)
+    me.color_attributes.active_color = me.color_attributes.get("Col")
+
+
+def bake_ao(ob, rig, hide=()):
+    """Bake local ambient occlusion into a vertex colour layer, so creases (under the helmet peak, inside the
+    collar, between pad canes, round the gloves) are darker. The rig is spread first, arms away from the body
+    and the bat out to the side, so only creases that stay creases in play get shaded."""
+    addon_utils.enable("cycles", default_set=True)
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.device = "CPU"
+    sc.cycles.samples = 64
+    if sc.world is None:
+        sc.world = bpy.data.worlds.new("bake_world")
+    sc.world.light_settings.distance = 0.1
+    pbs = rig.pose.bones
+    for s, sx in (("L", 1), ("R", -1)):
+        set_rot(pbs["upper_arm." + s], limb_R(0.15, 0.55, sx=sx))
+        set_rot(pbs["thigh." + s], limb_R(0.0, 0.1, sx=sx))
+    if "bat" in pbs:
+        pbs["bat"].matrix = Matrix.Translation((-0.5, 0.0, 0.0)) @ pbs["bat"].matrix
+    bpy.context.view_layer.update()
+    for h in hide:
+        h.hide_render = True
+    me = ob.data
+    ca = me.color_attributes.new("AO", "FLOAT_COLOR", "POINT")
+    me.color_attributes.active_color = ca
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    sc.render.bake.target = "VERTEX_COLORS"
+    bpy.ops.object.bake(type="AO")
+    for h in hide:
+        h.hide_render = False
+    for d in ca.data:
+        v = AO_FLOOR + (1 - AO_FLOOR) * d.color[0]
+        d.color = (v, v, v, 1.0)
+    for pb in pbs:
+        pb.matrix_basis = Matrix.Identity(4)
+    bpy.context.view_layer.update()
 
 
 # --------------------------------------------------------------------------
@@ -1043,7 +1682,7 @@ def export(kind, rig, body):
     bpy.ops.export_scene.gltf(
         filepath=path, export_format="GLB", use_selection=True,
         export_animations=True, export_animation_mode="NLA_TRACKS", export_force_sampling=True,
-        export_def_bones=False, export_yup=True, export_apply=False, export_morph=False,
+        export_def_bones=False, export_yup=True, export_apply=False, export_morph=False, export_vertex_color="ACTIVE",
         export_optimize_animation_size=True, export_reset_pose_bones=True,
     )
     return path
@@ -1092,6 +1731,7 @@ if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "export"
     os.makedirs(PREVIEW, exist_ok=True)
     if mode == "rest":
+        BAKE_AO = "--ao" in sys.argv
         reset()
         build_character("batsman")
         f, _ = build_character("fielder")
@@ -1099,6 +1739,9 @@ if __name__ == "__main__":
         cam = setup_preview_scene()
         render(os.path.join(PREVIEW, "rest_front.png"), cam, (0.6, -4.2, 1.2), (0.6, 0, 0.95))
         render(os.path.join(PREVIEW, "rest_three_q.png"), cam, (3.0, -3.0, 1.6), (0.6, 0, 0.95))
+        render(os.path.join(PREVIEW, "rest_face.png"), cam, (0.5, -1.7, 1.55), (0.6, 0, 1.45))
+        render(os.path.join(PREVIEW, "rest_back.png"), cam, (0.2, 2.6, 1.3), (0.2, 0, 0.9))
+        render(os.path.join(PREVIEW, "rest_legs.png"), cam, (-0.6, -1.2, 0.6), (0.0, 0, 0.45))
     elif mode in ("bat", "field"):
         kind = "batsman" if mode == "bat" else "fielder"
         names = sys.argv[2].split(",")

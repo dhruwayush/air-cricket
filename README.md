@@ -54,6 +54,8 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 
 - **Three.js** renders the ground, players and ball.
 - **Players are modelled and animated in Blender** by a script (`tools/players.py`): a padded, helmeted batsman and a capped fielder, both rigged with a skeleton.
+  - Each body is one continuous, skinned mesh, so shoulders, elbows and knees bend smoothly. The batsman's kit has pads with vertical canes, a knee roll and straps round the back, a helmet with a steel grille, ear pieces and a stem guard, padded gloves with finger rolls, a shaped bat (bowed spine, thick edges, stickers, ribbed grip), spiked shoes and a numbered shirt with side panels. Fielders have short sleeves, hands with fingers, striped trousers and caps with hair underneath.
+  - Ambient occlusion is baked into the vertex colours, so creases (under the peak, between the pad canes, round the gloves) are darker. Each player's colours are folded into four finishes (matte, satin, gloss and metal), so a player costs a few draw calls instead of twenty.
   - The batsman has 27 clips: stance, backlift, straight/cover/on/square drives, lofted drives, slog, flick, leg glance, back-foot punch and defence, forward defence, cut, late cut, upper cut, pull, hook, sweep, slog sweep, reverse sweep, scoop, leave, duck, running and non-striker idle. In every shot the bat meets the ball on the same frame, so the animation stays in sync with the timing.
   - Fielders have idle, ready, run, catch, dive, pick-up, throw and a full bowling action. The keeper adds a squat and a take, and wears pads and gauntlets (a second mesh on the fielder skeleton).
 - Each delivery is simulated ahead of time with gravity, bounce, swing and spin. Pace bowlers mix in yorkers and bouncers, and some overs follow a short-ball plan.
@@ -74,9 +76,10 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - Low catches are taken crouching with hands together, high ones with the hands up. A dropped catch pops out of the hands, falls, and is picked up and thrown back.
 - The ball collides with the batsman's animated pads, thighs, body and helmet and rebounds. LBW is decided like ball tracking: where it pitched, whether the impact was in line (or outside off with no shot offered), and whether it would have gone on to hit the stumps.
 - Balls you leave or miss carry through to the keeper's gloves.
+- **Floodlit look.** Physically based materials with filmic tone mapping. The floodlight tower behind the striker casts real shadows across the pitch from the batsmen, bowler, keeper and stumps, and the helmet, bat and grille reflect the lit stadium. The grass has close-up blade detail on top of the mown stripes, the pitch has cracks, footmarks and relief, and the white ball has a stitched seam that spins in flight.
 - **A living crowd.** The stands are drawn seat by seat in team colours. The crowd jumps with excitement, does a Mexican wave after a six, and fills with camera flashes on big moments, while flags wave along the front rows.
 - **Stadium sound, all synthesised in the browser with no audio files.** A murmuring crowd builds as the bowler runs in and hushes at the moment of delivery. It oohs at a play-and-miss, rises as a skier hangs in the air, groans at a dropped catch and roars for sixes and wickets, with applause, whistles, dhol drums and horns. The bat sounds different off the middle, the toe and the edge, and there are footsteps, bounces, pads, helmet knocks, stumps and gloves. Use the Sound button to mute.
-- **Built for phones.** The timing meter is a slim vertical gauge on the left edge. On touch screens the view is framed in the space above the controls, and the keeper and slips fade while they stand in front of the lens.
+- **Built for phones.** The timing meter is a slim vertical gauge on the left edge. On touch screens the view is framed in the space above the controls, and the keeper and slips fade while they stand in front of the lens. **Graphics** in the menu is Auto, High or Fast: Fast drops the shadows and draws fewer pixels, and Auto starts on High and switches to Fast for good if play runs slowly on your device.
 - The batsmen run between the wickets, and fielders pick up and throw back.
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.
@@ -103,7 +106,8 @@ Your daily results, streak and wins in each mode are kept in the browser (`local
 
 ```sh
 pip install bpy==4.2.0            # Blender as a Python module (Python 3.11)
-python3 tools/players.py           # rebuild the players -> tools/build/
+python3 tools/players.py           # rebuild the players -> tools/build/ (bakes occlusion with Cycles)
+python3 tools/players.py rest      # quick still renders of both players (add --ao to bake)
 python3 tools/players.py bat pull,cut 0.167,0.45   # render preview frames to tools/preview/
 python3 tools/build_page.py        # rebuild index.html
 ```

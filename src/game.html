@@ -298,6 +298,11 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
         <div class="slider"><label for="sens">Swing sensitivity</label><input type="range" id="sens" min="1" max="10" step="1" value="5"><output id="sens-out">5</output></div>
         <div class="slider"><label for="lag">Camera delay fix</label><input type="range" id="lag" min="0" max="200" step="10" value="70"><output id="lag-out">70 ms</output></div>
       </div>
+      <fieldset><legend>Graphics</legend><div class="seg">
+        <input type="radio" name="gfx" id="gfx-auto" value="auto" checked><label for="gfx-auto" id="gfx-auto-label">Auto</label>
+        <input type="radio" name="gfx" id="gfx-high" value="high"><label for="gfx-high">High</label>
+        <input type="radio" name="gfx" id="gfx-fast" value="fast"><label for="gfx-fast">Fast</label>
+      </div></fieldset>
     </div>
     <p class="err" id="cam-err" hidden></p>
     <div class="actions">
@@ -435,10 +440,17 @@ function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let
 const stage = $('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+// physically based: lighting is worked out in linear light, then tone-mapped like a camera would
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050c10);
-scene.fog = new THREE.Fog(0x0b1a21, 120, 330);
+const lin = hex => new THREE.Color(hex).convertSRGBToLinear();      // colours are written in sRGB, lit in linear
+scene.fog = new THREE.Fog(lin(0x0b1a21), 120, 330);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 1200);
 
 /* Frame the picture in the space the controls leave free: on a phone the touch pad covers the bottom,
@@ -464,19 +476,72 @@ function resize() {
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 250));
 
-scene.add(new THREE.HemisphereLight(0xd3e2ff, 0x1d3a22, 0.78));
-const sun = new THREE.DirectionalLight(0xfff1dc, 0.72); sun.position.set(30, 60, 25); scene.add(sun);
-const fill = new THREE.DirectionalLight(0xd2e2ff, 0.34); fill.position.set(-40, 50, -70); scene.add(fill);
+/* ---- graphics: High has floodlight shadows and full resolution; Fast drops the shadows and draws fewer pixels.
+   Auto starts on High and steps down for good if play runs slowly on this device. ---- */
+const gfx = { choice: 'auto', autoFast: false, level: '', samples: [], skip: 30, checked: false };
+try { gfx.choice = localStorage.getItem('ac-gfx') || 'auto'; gfx.autoFast = localStorage.getItem('ac-gfx-auto') === 'fast'; } catch (_) {}
+function applyGfx() {
+  const lvl = gfx.choice === 'auto' ? (gfx.autoFast ? 'fast' : 'high') : gfx.choice;
+  const lab = document.getElementById('gfx-auto-label'); if (lab) lab.textContent = gfx.choice === 'auto' ? `Auto · ${lvl === 'high' ? 'High' : 'Fast'}` : 'Auto';
+  if (lvl === gfx.level) return;
+  gfx.level = lvl;
+  const high = lvl === 'high', dpr = window.devicePixelRatio || 1;
+  renderer.setPixelRatio(high ? Math.min(2, dpr) : Math.min(1.25, dpr));
+  renderer.shadowMap.enabled = high;
+  key.castShadow = high;
+  scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); });
+  resize();
+}
+// called every frame of play while Auto is still on High
+function sampleGfx(rawDt) {
+  if (gfx.checked || gfx.choice !== 'auto' || gfx.level !== 'high' || document.hidden) return;
+  if (gfx.skip > 0) { gfx.skip--; return; }                   // shaders compiling, models settling
+  gfx.samples.push(rawDt);
+  if (gfx.samples.length < 180) return;
+  gfx.checked = true;
+  const med = gfx.samples.slice().sort((a, b) => a - b)[gfx.samples.length >> 1];
+  if (med > 1 / 40) { gfx.autoFast = true; try { localStorage.setItem('ac-gfx-auto', 'fast'); } catch (_) {} applyGfx(); }
+}
 
-function canvasTex(w, h, draw, repeat) {
+/* ---- floodlights: four towers on the diagonals. The one behind the striker's right shoulder casts
+   real shadows over the pitch; the other three fill in, and the sky and grass bounce a little back. ---- */
+const TOWERS = [0, 1, 2, 3].map(k => { const a = Math.PI / 4 + k * Math.PI / 2; return new THREE.Vector3(Math.cos(a) * 128, 60, PITCH_C + Math.sin(a) * 128); });
+scene.add(new THREE.HemisphereLight(lin(0x8fa6c8), lin(0x2f6a35), 0.3));
+const key = new THREE.DirectionalLight(lin(0xfff3e0), 1.25);
+const keyAim = new THREE.Vector3(0, 0, -9);
+key.position.copy(TOWERS[0]).sub(keyAim).normalize().multiplyScalar(90).add(keyAim);
+key.target.position.copy(keyAim); scene.add(key, key.target);
+[[1, 0.42], [2, 0.36], [3, 0.42]].forEach(([k, s]) => {
+  const l = new THREE.DirectionalLight(lin(0xf4f1ff), s); l.position.copy(TOWERS[k]).sub(keyAim); scene.add(l);
+});
+{
+  // fit the shadow camera tightly round the pitch, both sets of stumps and the keeper
+  const s = key.shadow, cam = s.camera;
+  s.mapSize.set(2048, 2048); s.bias = -0.0004; s.normalBias = 0.025; s.radius = 2;
+  const probe = new THREE.OrthographicCamera(); probe.position.copy(key.position); probe.lookAt(keyAim); probe.updateMatrixWorld(true);   // looks down -z like the shadow camera
+  const inv = probe.matrixWorld.clone().invert(), p = new THREE.Vector3();
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const x of [-5, 5]) for (const y of [0, 2.6]) for (const z of [FAR_Z - 3, 5.5]) {
+    p.set(x, y, z).applyMatrix4(inv);
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); z0 = Math.min(z0, -p.z); z1 = Math.max(z1, -p.z);
+  }
+  Object.assign(cam, { left: x0, right: x1, bottom: y0, top: y1, near: z0 - 5, far: z1 + 5 });
+  cam.updateProjectionMatrix();
+  key.castShadow = true;
+}
+
+function canvasTex(w, h, draw, repeat, data) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
+  if (!data) t.encoding = THREE.sRGBEncoding;           // colour pictures; bump and roughness maps stay linear
   t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
   return t;
 }
-const lam = c => new THREE.MeshLambertMaterial({ color: c });
+const std = (c, rough, metal, extra) => new THREE.MeshStandardMaterial(Object.assign({ color: lin(c), roughness: rough == null ? 0.85 : rough, metalness: metal || 0 }, extra));
+// unlit things (lines, signs, glows) keep their exact colour: no tone mapping
+const basic = o => { const p = Object.assign({ toneMapped: false }, o); if (o.color != null) p.color = lin(o.color); return new THREE.MeshBasicMaterial(p); };
 
 /* sky */
 const skyTex = canvasTex(8, 256, (g, w, h) => {
@@ -485,21 +550,46 @@ const skyTex = canvasTex(8, 256, (g, w, h) => {
   gr.addColorStop(0.53, '#0b1a20'); gr.addColorStop(1, '#040a0d');
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
 });
-const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
+const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 32, 16), basic({ map: skyTex, side: THREE.BackSide, fog: false }));
 sky.position.set(0, 0, PITCH_C); scene.add(sky);
 
 /* outfield with mown stripes */
 const grassTex = canvasTex(1024, 1024, (g, w, h) => {
   const n = 22;
-  for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#2e7638' : '#378743'; g.fillRect(i * w / n, 0, w / n + 1, h); }
+  for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#2a7533' : '#33893e'; g.fillRect(i * w / n, 0, w / n + 1, h); }
   const r = rng(7);
   for (let i = 0; i < 14000; i++) { g.fillStyle = r() < 0.5 ? `rgba(0,0,0,${0.03 + r() * 0.05})` : `rgba(255,255,230,${0.02 + r() * 0.04})`; g.fillRect(r() * w, r() * h, 2, 2); }
 });
-const ground = new THREE.Mesh(new THREE.CircleGeometry(BOUNDARY_R + 16, 96), new THREE.MeshLambertMaterial({ map: grassTex }));
+// a tile of grass blades, drawn wrapped at the edges so it repeats without seams
+function wrapStroke(g, w, h, x, y, sw, sh) { for (const dx of [0, -w, w]) for (const dy of [0, -h, h]) g.fillRect(x + dx, y + dy, sw, sh); }
+const grassDetail = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
+  const r = rng(11);
+  for (let i = 0; i < 11000; i++) {
+    g.fillStyle = r() < 0.5 ? `rgba(0,0,0,${0.06 + r() * 0.14})` : `rgba(255,255,255,${0.05 + r() * 0.12})`;
+    wrapStroke(g, w, h, r() * w, r() * h, 1 + r() * 1.2, 2 + r() * 5);
+  }
+}, [1, 1], true);
+// world-space detail: a 1.1 m tile plus a 3.7 m tile, multiplied into the mown stripes
+function addGroundDetail(mat, tex, scale, amount) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.detailMap = { value: tex };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vDetailUv;')
+      .replace('#include <uv_vertex>', `#include <uv_vertex>\nvDetailUv = (modelMatrix * vec4(position, 1.0)).xz * ${scale.toFixed(3)};`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D detailMap; varying vec2 vDetailUv;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        { float d = texture2D(detailMap, vDetailUv).r + texture2D(detailMap, vDetailUv * 0.297 + 0.31).r;
+          diffuseColor.rgb *= mix(1.0, d, ${amount.toFixed(2)}); }`);
+  };
+}
+const groundMat = std(0xffffff, 0.95, 0, { map: grassTex, envMapIntensity: 0.35 });
+addGroundDetail(groundMat, grassDetail, 0.9, 0.55);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(BOUNDARY_R + 16, 96), groundMat);
+ground.receiveShadow = true;
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, PITCH_C); scene.add(ground);
 
 /* boundary rope */
-const rope = new THREE.Mesh(new THREE.TorusGeometry(BOUNDARY_R, 0.14, 6, 180), lam(0xf4f1e6));
+const rope = new THREE.Mesh(new THREE.TorusGeometry(BOUNDARY_R, 0.14, 6, 180), std(0xf4f1e6, 0.8));
 rope.rotation.x = Math.PI / 2; rope.position.set(0, 0.12, PITCH_C); scene.add(rope);
 
 /* the 30-yard circle: white discs round both sets of stumps, joined along the sides */
@@ -509,7 +599,8 @@ rope.rotation.x = Math.PI / 2; rope.position.set(0, 0.12, PITCH_C); scene.add(ro
   for (let a = 0; a <= Math.PI + 1e-6; a += step / 27.4) pts.push([27.4 * Math.cos(a), 27.4 * Math.sin(a)]);                 // behind the striker
   for (let a = Math.PI; a <= 2 * Math.PI + 1e-6; a += step / 27.4) pts.push([27.4 * Math.cos(a), FAR_Z + 27.4 * Math.sin(a)]); // behind the bowler
   for (let z = FAR_Z + step; z < 0; z += step) { pts.push([27.4, z]); pts.push([-27.4, z]); }
-  const dots = new THREE.InstancedMesh(new THREE.CircleGeometry(0.22, 12), new THREE.MeshBasicMaterial({ color: 0xf2f2ea, transparent: true, opacity: 0.8 }), pts.length);
+  const dots = new THREE.InstancedMesh(new THREE.CircleGeometry(0.22, 12), std(0xf2f2ea, 0.9, 0, { transparent: true, opacity: 0.8 }), pts.length);
+  dots.receiveShadow = true;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), one = new THREE.Vector3(1, 1, 1);
   pts.forEach(([x, z], i) => dots.setMatrixAt(i, m.compose(new THREE.Vector3(x, 0.012, z), q, one)));
   scene.add(dots);
@@ -523,7 +614,7 @@ const adTex = canvasTex(2048, 64, (g, w, h) => {
   let x = 20, i = 0;
   while (x < w) { const s = words[i++ % words.length]; g.fillStyle = i % 2 ? '#ffb627' : '#e9efe6'; g.fillText(s, x, h / 2 + 2); x += g.measureText(s).width + 70; }
 }, [-3, 1]);   // negative repeat: the boards are seen from inside, so flip the text back
-const hoarding = new THREE.Mesh(new THREE.CylinderGeometry(BOUNDARY_R + 15, BOUNDARY_R + 15, 1.2, 128, 1, true), new THREE.MeshBasicMaterial({ map: adTex, side: THREE.BackSide }));
+const hoarding = new THREE.Mesh(new THREE.CylinderGeometry(BOUNDARY_R + 15, BOUNDARY_R + 15, 1.2, 128, 1, true), basic({ map: adTex, side: THREE.BackSide }));
 hoarding.position.set(0, 0.6, PITCH_C); scene.add(hoarding);
 
 /* stands + crowd: spectators drawn seat by seat, animated in a shader so they bob, jump and do the wave */
@@ -619,7 +710,7 @@ const flags = [];
     const [a, b] = designs[i % designs.length];
     const tex = canvasTex(64, 40, (g, w, h) => { g.fillStyle = a; g.fillRect(0, 0, w, h); g.fillStyle = b; g.fillRect(0, h * 0.38, w, h * 0.24); });
     const geo = new THREE.PlaneGeometry(3.2, 1.9, 12, 1); geo.translate(1.6, 0, 0);
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, color: 0xd8d8d8 }));
+    const m = new THREE.Mesh(geo, basic({ map: tex, side: THREE.DoubleSide, color: 0xd8d8d8 }));
     const th = (i / 20) * Math.PI * 2 + r() * 0.2, rad = lerp(80, 118, 0.1) - 1.5, y = 3.2 + r() * 2;
     m.position.set(rad * Math.sin(th), y, PITCH_C + rad * Math.cos(th));
     m.lookAt(0, y, PITCH_C);
@@ -654,7 +745,7 @@ const crowdFx = {
     });
   },
 };
-const roof = new THREE.Mesh(new THREE.CylinderGeometry(126, 118, 3, 72, 1, true), new THREE.MeshLambertMaterial({ color: 0x14242b, side: THREE.DoubleSide }));
+const roof = new THREE.Mesh(new THREE.CylinderGeometry(126, 118, 3, 72, 1, true), std(0x14242b, 0.9, 0, { side: THREE.DoubleSide }));
 roof.position.set(0, 31, PITCH_C); scene.add(roof);
 
 /* floodlights */
@@ -666,29 +757,87 @@ const glowTex = canvasTex(128, 128, (g, w, h) => {
 for (let k = 0; k < 4; k++) {
   const a = Math.PI / 4 + k * Math.PI / 2, R = 128;
   const x = Math.cos(a) * R, z = PITCH_C + Math.sin(a) * R;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.3, 58, 8), lam(0x1a272d));
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.3, 58, 8), std(0x1a272d, 0.6, 0.4));
   mast.position.set(x, 29, z); scene.add(mast);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(12, 7, 1), new THREE.MeshBasicMaterial({ color: 0xfff6e0 }));
+  const head = new THREE.Mesh(new THREE.BoxGeometry(12, 7, 1), basic({ color: 0xfff6e0 }));
   head.position.set(x, 60, z); head.lookAt(0, 0, PITCH_C); scene.add(head);
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true }));
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true, toneMapped: false }));
   glow.scale.set(60, 60, 1); glow.position.set(x, 60, z); scene.add(glow);
 }
 
-/* pitch */
-const pitchTex = canvasTex(256, 2048, (g, w, h) => {
-  g.fillStyle = '#c3a86e'; g.fillRect(0, 0, w, h);
-  const r = rng(3);
-  for (let i = 0; i < 16000; i++) { g.fillStyle = r() < 0.55 ? `rgba(90,60,25,${0.04 + r() * 0.08})` : `rgba(255,245,210,${0.04 + r() * 0.06})`; g.fillRect(r() * w, r() * h, 2 + r() * 2, 2 + r() * 2); }
-  const wear = y => { const gr = g.createRadialGradient(w / 2, y, 4, w / 2, y, 150); gr.addColorStop(0, 'rgba(110,80,40,.45)'); gr.addColorStop(1, 'rgba(110,80,40,0)'); g.fillStyle = gr; g.fillRect(0, y - 160, w, 320); };
-  wear(h * 0.08); wear(h * 0.92);
-  g.fillStyle = 'rgba(70,120,50,.25)'; g.fillRect(0, 0, 14, h); g.fillRect(w - 14, 0, 14, h);
-});
-const pitch = new THREE.Mesh(new THREE.PlaneGeometry(3.05, 24), new THREE.MeshLambertMaterial({ map: pitchTex }));
-pitch.rotation.x = -Math.PI / 2; pitch.position.set(0, 0.004, PITCH_C); scene.add(pitch);
+/* what shiny kit reflects: a small stand-in stadium with a night sky, lit stands, grass and the four light banks,
+   pre-filtered once at load (PMREM) so helmets, bats and pads pick up the floodlights */
+function buildEnvironment() {
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.SphereGeometry(200, 24, 12), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
+  const st = new THREE.Mesh(new THREE.CylinderGeometry(118, 80, 30, 48, 1, true), new THREE.MeshBasicMaterial({ color: lin(0x2a3540), side: THREE.BackSide }));
+  st.position.y = 15; env.add(st);
+  const gr = new THREE.Mesh(new THREE.CircleGeometry(120, 32), new THREE.MeshBasicMaterial({ color: lin(0x3c8a46) }));
+  gr.rotation.x = -Math.PI / 2; env.add(gr);
+  TOWERS.forEach(t => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(16, 9, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.96, 0.88).multiplyScalar(16) }));
+    b.position.set(t.x, t.y, t.z - PITCH_C); b.lookAt(0, 0, 0); env.add(b);
+  });
+  const pm = new THREE.PMREMGenerator(renderer), rt = pm.fromScene(env, 0.02);
+  pm.dispose();
+  return rt.texture;
+}
+try { scene.environment = buildEnvironment(); } catch (e) { console.warn('no environment map', e); }
 
-const lineMat = new THREE.MeshBasicMaterial({ color: 0xf7f6ef });
-function crease(x, z, w, d, mat) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat || lineMat); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.008, z); scene.add(m); return m; }
-const farPopMat = new THREE.MeshBasicMaterial({ color: 0xf7f6ef });   // turns red when the bowler oversteps
+/* pitch */
+// The pitch is drawn twice from the same random marks: once in colour, once as a height map.
+// Canvas y runs from the far (bowler's) end at the top to the striker's end at the bottom.
+function drawPitch(g, w, h, height) {
+  const r = rng(3), H = v => height ? `rgba(${v},${v},${v},` : null;
+  g.fillStyle = height ? '#808080' : '#c6a96f'; g.fillRect(0, 0, w, h);
+  // clay grain
+  for (let i = 0; i < 26000; i++) {
+    const dark = r() < 0.55, a = 0.04 + r() * 0.09;
+    g.fillStyle = height ? (dark ? H(40) + a + ')' : H(220) + a + ')') : dark ? `rgba(95,62,26,${a})` : `rgba(255,244,212,${a})`;
+    g.fillRect(r() * w, r() * h, 1 + r() * 2.5, 1 + r() * 2.5);
+  }
+  // worn, darker areas where the bowlers land and the batsmen stand
+  const wear = (y, rad, k) => {
+    const gr = g.createRadialGradient(w / 2, y, 4, w / 2, y, rad);
+    gr.addColorStop(0, height ? `rgba(60,60,60,${0.5 * k})` : `rgba(112,80,42,${0.5 * k})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, y - rad, w, rad * 2);
+  };
+  wear(h * 0.14, 190, 1); wear(h * 0.87, 170, 1); wear(h * 0.3, 140, 0.5); wear(h * 0.72, 140, 0.4);
+  // cracks: thin wandering lines, mostly in the drier middle
+  for (let i = 0; i < 48; i++) {
+    let x = r() * w, y = h * (0.12 + r() * 0.76), ang = (r() - 0.5) * Math.PI;
+    const ca = 0.16 + r() * 0.22;                         // drawn the same way in both passes, so the marks line up
+    g.strokeStyle = height ? 'rgba(20,20,20,.6)' : `rgba(84,56,26,${ca})`;
+    g.lineWidth = 0.5 + r() * 0.7; g.beginPath(); g.moveTo(x, y);
+    const n = 4 + (r() * 9 | 0);
+    for (let k = 0; k < n; k++) { ang += (r() - 0.5) * 1.1; x += Math.cos(ang) * (6 + r() * 12); y += Math.sin(ang) * (6 + r() * 12); g.lineTo(x, y); }
+    g.stroke();
+  }
+  // footmarks: scuffed oval prints round both popping creases and in the bowler's follow-through
+  const prints = (y0, y1, x0, x1, n) => {
+    for (let i = 0; i < n; i++) {
+      const x = x0 + r() * (x1 - x0), y = y0 + r() * (y1 - y0);
+      g.save(); g.translate(x, y); g.rotate((r() - 0.5) * 0.6);
+      g.fillStyle = height ? `rgba(40,40,40,${0.15 + r() * 0.2})` : `rgba(128,92,52,${0.1 + r() * 0.14})`;
+      g.beginPath(); g.ellipse(0, 0, 3 + r() * 2.5, 6 + r() * 4, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+  };
+  prints(h * 0.84, h * 0.9, w * 0.25, w * 0.7, 46);       // the striker's crease
+  prints(h * 0.11, h * 0.22, w * 0.45, w * 0.8, 60);      // where the bowlers land and follow through
+  prints(h * 0.06, h * 0.12, w * 0.15, w * 0.45, 22);     // the non-striker's end
+  // grass creeping in at the edges
+  g.fillStyle = height ? 'rgba(200,200,200,.3)' : 'rgba(70,120,50,.28)'; g.fillRect(0, 0, 14, h); g.fillRect(w - 14, 0, 14, h);
+}
+const pitchTex = canvasTex(256, 2048, (g, w, h) => drawPitch(g, w, h, false));
+const pitchBump = canvasTex(256, 2048, (g, w, h) => drawPitch(g, w, h, true), null, true);
+const pitch = new THREE.Mesh(new THREE.PlaneGeometry(3.05, 24), std(0xffffff, 0.9, 0, { map: pitchTex, bumpMap: pitchBump, bumpScale: 0.012, envMapIntensity: 0.45 }));
+pitch.rotation.x = -Math.PI / 2; pitch.position.set(0, 0.004, PITCH_C); scene.add(pitch);
+pitch.receiveShadow = true;
+
+const lineMat = std(0xf7f6ef, 0.8);
+function crease(x, z, w, d, mat) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat || lineMat); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.008, z); m.receiveShadow = true; scene.add(m); return m; }
+const farPopMat = std(0xf7f6ef, 0.8);   // turns red when the bowler oversteps
 [[0, 1], [FAR_Z, -1]].forEach(([sz, dir]) => {
   crease(0, sz, 2.64, 0.05);                       // bowling crease
   crease(0, sz - 1.22 * dir, 3.66, 0.05, dir < 0 ? farPopMat : null);   // popping crease
@@ -700,14 +849,14 @@ const farPopMat = new THREE.MeshBasicMaterial({ color: 0xf7f6ef });   // turns r
 /* stumps */
 function makeStumps(z) {
   const g = new THREE.Group(); g.position.set(0, 0, z);
-  const mat = lam(0xeee6d0);
+  const mat = std(0xeee6d0, 0.42);
   const stumps = [-0.0963, 0, 0.0963].map(x => {
     const s = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.71, 8), mat);
-    s.geometry.translate(0, 0.355, 0); s.position.set(x, 0, 0); g.add(s); return s;
+    s.geometry.translate(0, 0.355, 0); s.position.set(x, 0, 0); s.castShadow = s.receiveShadow = true; g.add(s); return s;
   });
   const bails = [-0.048, 0.048].map(x => {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.018, 0.018), lam(0xd8bb72));
-    b.position.set(x, 0.72, 0); g.add(b); return b;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.018, 0.018), std(0xd8bb72, 0.4));
+    b.position.set(x, 0.72, 0); b.castShadow = true; g.add(b); return b;
   });
   scene.add(g);
   return { g, stumps, bails, fallT: -1, bailV: [] };
@@ -736,18 +885,28 @@ function updateStumps(s, dt) {
 }
 
 /* ball, shadow, trail, bounce marker */
-const ball = new THREE.Mesh(new THREE.SphereGeometry(VIS_R, 20, 14), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x3a3a3a }));
+const ballTex = canvasTex(256, 128, (g, w, h) => {
+  g.fillStyle = '#f4f2ec'; g.fillRect(0, 0, w, h);
+  const r = rng(9);
+  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(120,110,95,${0.04 + r() * 0.08})`; g.fillRect(r() * w, r() * h, 1 + r() * 4, 1 + r() * 2); }   // scuffs
+  const y = h / 2;
+  g.fillStyle = '#d9d4c8'; g.fillRect(0, y - 3, w, 6);                                             // the raised seam
+  g.strokeStyle = '#2f4a37'; g.lineWidth = 1.2;
+  for (const row of [-6, 6]) for (let x = 0; x < w; x += 4) { g.beginPath(); g.moveTo(x, y + row - 2); g.lineTo(x + 2.5, y + row + 2); g.stroke(); }   // stitches
+});
+const ball = new THREE.Mesh(new THREE.SphereGeometry(VIS_R, 24, 16), std(0xffffff, 0.4, 0, { map: ballTex, emissive: lin(0x3a3a3a) }));
+ball.rotation.z = 0.35;                                // seam slightly angled, like a bowler's grip
 scene.add(ball);
 const shadowTex = canvasTex(64, 64, (g, w, h) => {
   const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
   gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
 });
-const ballShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+const ballShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), basic({ map: shadowTex, transparent: true, depthWrite: false }));
 ballShadow.rotation.x = -Math.PI / 2; scene.add(ballShadow);
 const TRAIL_N = 18;
 const trailGeo = new THREE.BufferGeometry();
 trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 3), 3));
-const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }));
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, toneMapped: false }));
 trail.frustumCulled = false; scene.add(trail);
 let trailPts = [];
 function pushTrail(p) {
@@ -757,7 +916,7 @@ function pushTrail(p) {
   trailGeo.attributes.position.needsUpdate = true;
 }
 function clearTrail() { trailPts = []; trail.visible = false; }
-const bounceMark = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.11, 28), new THREE.MeshBasicMaterial({ color: 0xffb627, transparent: true, opacity: 0.85, depthWrite: false }));
+const bounceMark = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.11, 28), basic({ color: 0xffb627, transparent: true, opacity: 0.85, depthWrite: false }));
 bounceMark.rotation.x = -Math.PI / 2; bounceMark.visible = false; scene.add(bounceMark);
 
 /* ============================================================
@@ -782,20 +941,13 @@ function loadModels() {
   const loader = new THREE.GLTFLoader();
   return Promise.all(['batsman', 'fielder'].map(k => new Promise((res, rej) => {
     loader.parse(b64ToBuffer(A[k]), '', g => {
-      // flat, fast materials in the same colour space as the rest of the scene
-      const swap = new Map();
+      // Blender folds each player into four finishes (matte cloth, satin skin and wood, gloss, metal); the colours
+      // and baked creases are in the vertex colours. Hard, shiny kit reflects more of the floodlit stadium.
       g.scene.traverse(o => {
         if (!o.isMesh) return;
-        const list = Array.isArray(o.material) ? o.material : [o.material];
-        const next = list.map(m => {
-          if (!swap.has(m)) {
-            const c = m.color.clone().convertLinearToSRGB();
-            const mm = new THREE.MeshLambertMaterial({ color: c, skinning: !!o.isSkinnedMesh });
-            mm.name = m.name; swap.set(m, mm);
-          }
-          return swap.get(m);
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+          m.envMapIntensity = { fin_metal: 1.1, fin_gloss: 1.0, fin_satin: 0.7 }[m.name] || 0.55;
         });
-        o.material = Array.isArray(o.material) ? next : next[0];
       });
       models[k] = g; res();
     }, rej);
@@ -810,14 +962,16 @@ class Actor {
     this.mirror = new THREE.Group();
     this.model = THREE.SkeletonUtils.clone(src.scene);
     this.model.rotation.y = modelYaw || 0;
-    this.model.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
+    // players near the pitch cast real floodlight shadows; everyone else gets a soft blob underneath
+    this.model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = !!(opts && opts.shadow); o.receiveShadow = true; } });
     const gear = this.model.getObjectByName('keeper_gear');          // pads + gauntlets, keeper only
     if (gear) gear.visible = !!(opts && opts.keeper);
     this.opacity = 1;
     if (opts && opts.fade)                                             // own materials so this one can fade out
       this.model.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone(); });
     this.mirror.add(this.model); this.root.add(this.mirror); scene.add(this.root);
-    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.55, depthWrite: false }));
+    this.blob = opts && opts.shadow ? 0.32 : 0.55;      // a light contact shadow under players who cast a real one
+    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), basic({ map: blobTex, transparent: true, opacity: this.blob, depthWrite: false }));
     this.shadow.rotation.x = -Math.PI / 2; this.shadow.position.y = 0.01; scene.add(this.shadow);
     this.mixer = new THREE.AnimationMixer(this.model);
     this.clips = {}; src.animations.forEach(c => { this.clips[c.name] = c; });
@@ -832,7 +986,7 @@ class Actor {
       if (!o.isMesh) return;
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.transparent = v < 0.99; m.opacity = v; m.depthWrite = v >= 0.99; });
     });
-    this.shadow.material.opacity = 0.55 * v;
+    this.shadow.material.opacity = this.blob * v;
   }
   play(n, o) {
     o = o || {};
@@ -1037,10 +1191,10 @@ function turnTo(obj, x, z, k) {
 }
 
 function initActors() {
-  strikerA = new Actor('batsman', Math.PI / 2);
-  nonA = new Actor('batsman', 0);
-  bowlerA = new Actor('fielder', 0);
-  fielders.forEach(f => { if (!f.hidden) f.actor = new Actor('fielder', Math.PI, { keeper: f === keeper, fade: true }); });
+  strikerA = new Actor('batsman', Math.PI / 2, { shadow: true });
+  nonA = new Actor('batsman', 0, { shadow: true });
+  bowlerA = new Actor('fielder', 0, { shadow: true });
+  fielders.forEach(f => { if (!f.hidden) f.actor = new Actor('fielder', Math.PI, { keeper: f === keeper, fade: true, shadow: f === keeper }); });
   bowlerFielder.actor = bowlerA;
   strikerA.play('stance', { loop: true, fade: 0 });
   nonA.play('backup', { loop: true, fade: 0 });
@@ -2446,7 +2600,7 @@ function nextBall() {
   }
   del = makeDelivery(ballRandom(state.balls, state.rebowl));
   del.freeHit = state.freeHit;
-  farPopMat.color.set(0xf7f6ef);
+  farPopMat.color.copy(lin(0xf7f6ef));
   setCall(state.freeHit ? 'Free hit' : '', 'free');
   $('gun-k').textContent = `Over ${state.over + 1} · ${state.bowlerType === 'pace' ? 'Pace' : (state.spinTurn > 0 ? 'Off-spin' : 'Leg-spin')}`;
   $('gun-v').innerHTML = '— <small>km/h</small>'; $('gun-len').textContent = 'Running in';
@@ -2483,7 +2637,7 @@ function setCall(text, kind) {
 }
 function callNoBall() {
   setCall('No ball', 'nb');
-  farPopMat.color.set(0xff6152);
+  farPopMat.color.copy(lin(0xff6152));
   $('gun-len').textContent = 'Overstepped';
   crowdReact('ooh', 0.5);
 }
@@ -2737,11 +2891,11 @@ function timeScaleAt(w) {
 const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* contact flash + pitch puff */
-const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, toneMapped: false }));
 flash.scale.set(0.5, 0.5, 1); scene.add(flash);
 let flashT = -1;
 function impactFlash(p, power) { flash.position.copy(p); flashT = 0; flash.userData.power = power; }
-const puff = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.16, 28), new THREE.MeshBasicMaterial({ color: 0xe8d7a8, transparent: true, opacity: 0, depthWrite: false }));
+const puff = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.16, 28), basic({ color: 0xe8d7a8, transparent: true, opacity: 0, depthWrite: false }));
 puff.rotation.x = -Math.PI / 2; scene.add(puff);
 let puffT = -1;
 
@@ -2845,7 +2999,8 @@ let setT = 0, setDur = 0, audioStep = -1, audioBed = -1;
 
 function tick(ms) {
   const wall = ms / 1000;
-  const wallDt = Math.min(0.05, wall - (lastWall || wall)); lastWall = wall;
+  const rawDt = wall - (lastWall || wall), wallDt = Math.min(0.05, rawDt); lastWall = wall;
+  if (phase === 'runup' || phase === 'delivery' || phase === 'hit') sampleGfx(rawDt);
   fx.scale = timeScaleAt(wall);
   const dt = wallDt * fx.scale;
   gClock += dt;
@@ -2982,6 +3137,8 @@ function tick(ms) {
   /* ball visuals */
   if (phase !== 'menu' && phase !== 'over') {
     ball.position.copy(ballPos);
+    if (phase === 'delivery') ball.rotateX(-dt * (del && del.type === 'spin' ? 30 : 45));     // seam spinning back toward the bowler
+    else if (phase === 'hit') ball.rotateX(dt * 25);
     ballShadow.position.set(ballPos.x, 0.011, ballPos.z);
     const sh = clamp(1 - ballPos.y / 6, 0.25, 1); ballShadow.scale.set(sh, sh, 1);
     ballShadow.material.opacity = sh;
@@ -3053,6 +3210,12 @@ placeField();
 ballPos.set(RELEASE.x, RELEASE.y, RELEASE.z);
 layoutMeter(LEVELS.club.W);
 updateHUD(); updateChips(); syncCamSettings(); syncModeInfo();
+{ const r = document.getElementById('gfx-' + gfx.choice); if (r) r.checked = true; }
+document.querySelectorAll('input[name="gfx"]').forEach(r => r.addEventListener('change', () => {
+  gfx.choice = r.value; try { localStorage.setItem('ac-gfx', r.value); } catch (_) {}
+  applyGfx();
+}));
+applyGfx();
 resize();
 requestAnimationFrame(tick);
 $('btn-start').disabled = true; const startLabel = $('btn-start').textContent; $('btn-start').textContent = 'Loading players…';

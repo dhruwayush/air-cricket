@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air Cricket · 3D night-match cricket in your browser</title>
+<meta name="description" content="A 3D floodlit cricket batting game that runs in a browser tab and on Android. Bat with your keyboard, touch, or your camera.">
+<meta property="og:title" content="Air Cricket">
+<meta property="og:description" content="3D night-match cricket in a browser tab. Bat with keys, touch, or your camera.">
+<meta property="og:image" content="/media/poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#08161b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Tokens are the game's own (src/game.html): night sky, LED amber, chalk, and the score colours. */
+:root{
+  --night:#08161b; --night-2:#0d2128; --panel:rgba(6,19,24,.86); --line:rgba(186,222,204,.18);
+  --chalk:#eef1e7; --muted:#9ab1a8; --led:#ffb627; --led-ink:#1d1403;
+  --four:#83e3a6; --six:#8fd6ff; --wicket:#ff6152;
+  --turf-a:#1f6a3f; --turf-b:#22744a;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-ui:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --wrap:min(1180px, 100% - 32px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--night);color:var(--chalk);font:500 18px/1.5 var(--f-ui);-webkit-font-smoothing:antialiased}
+img,video{display:block;max-width:100%;height:auto}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--led);outline-offset:3px;border-radius:4px}
+.wrap{width:var(--wrap);margin-inline:auto}
+.eyebrow{font:700 14px/1 var(--f-ui);letter-spacing:.2em;text-transform:uppercase;color:var(--led);margin:0 0 14px}
+h1,h2,h3{font-family:var(--f-display);font-weight:900;text-transform:uppercase;line-height:.9;letter-spacing:.005em;margin:0;text-wrap:balance}
+h2{font-size:clamp(44px,6.4vw,84px)}
+.lede{color:var(--muted);font-size:20px;max-width:34em;margin:18px 0 0}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 26px;border-radius:8px;font:900 22px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;text-decoration:none;border:2px solid transparent;transition:transform .15s ease, background .15s ease}
+.btn-led{background:var(--led);color:var(--led-ink);box-shadow:0 0 30px rgba(255,182,39,.28)}
+.btn-led:hover{transform:translateY(-2px)}
+.btn-ghost{border-color:var(--line);color:var(--chalk)}
+.btn-ghost:hover{border-color:var(--chalk)}
+.btn small{font:600 14px/1 var(--f-ui);letter-spacing:.02em;text-transform:none;opacity:.75}
+
+/* header */
+.top{position:sticky;top:0;z-index:10;background:rgba(8,22,27,.82);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.mark{font:900 28px/1 var(--f-display);text-transform:uppercase;text-decoration:none;letter-spacing:.01em}
+.mark span{color:var(--led)}
+.top .btn{padding:10px 16px;font-size:17px}
+
+/* hero */
+.hero{position:relative;padding:64px 0 72px;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-20% -10% auto;height:520px;background:radial-gradient(closest-side, rgba(255,240,200,.16), transparent);pointer-events:none}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:48px;align-items:center}
+.hero h1{font-size:clamp(56px,6.2vw,96px)}
+.hero h1 em{font-style:normal;color:var(--led);text-shadow:0 0 28px rgba(255,182,39,.35)}
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.fineprint{color:var(--muted);font-size:15px;margin-top:14px}
+.screen{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 6px rgba(6,19,24,.9)}
+.screen video{width:100%;aspect-ratio:16/9;object-fit:cover;background:#000}
+.sound{position:absolute;right:12px;bottom:12px;background:var(--panel);color:var(--chalk);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font:700 13px/1 var(--f-ui);letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+.sound[aria-pressed="true"]{background:var(--led);color:var(--led-ink);border-color:transparent}
+
+/* LED boundary board: the sponsor boards that ring the ground in the game */
+.boards{background:#050d10;border-block:1px solid rgba(255,182,39,.25);overflow:hidden;white-space:nowrap;padding:14px 0}
+.boards-track{display:inline-flex;animation:boards 38s linear infinite}
+.boards span{font:900 30px/1 var(--f-display);letter-spacing:.42em;text-transform:uppercase;color:var(--led);padding-right:.42em;text-shadow:0 0 12px rgba(255,182,39,.55)}
+.boards span:nth-child(even){color:var(--chalk);text-shadow:0 0 12px rgba(238,241,231,.35)}
+@keyframes boards{to{transform:translateX(-50%)}}
+
+section{padding:96px 0}
+
+/* shot finder */
+.finder{background:repeating-linear-gradient(90deg,var(--turf-a) 0 90px,var(--turf-b) 90px 180px);position:relative}
+.finder::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,22,27,.72),rgba(8,22,27,.35) 40%,rgba(8,22,27,.72))}
+.finder .wrap{position:relative}
+.finder-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:44px;align-items:stretch}
+.deck{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:26px}
+.label{font:700 13px/1 var(--f-ui);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.seg{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+.seg button,.pad button,.fam button{font:600 17px/1 var(--f-ui);color:var(--chalk);background:rgba(255,255,255,.04);border:1px solid var(--line);cursor:pointer}
+.seg button{padding:10px 16px;border-radius:999px}
+.seg button[aria-pressed="true"]{background:var(--led);color:var(--led-ink);border-color:transparent}
+.pad{display:grid;grid-template-columns:repeat(3,72px);grid-template-rows:repeat(3,72px);gap:8px}
+.pad button,.fam button{border-radius:10px;border-bottom-width:4px;font-size:28px;font-weight:700;display:grid;place-items:center;transition:transform .06s, background .1s}
+.pad button.on,.fam button.on{background:var(--led);color:var(--led-ink);transform:translateY(2px);border-color:#b97c00}
+.pad-row{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end}
+.fam{display:grid;gap:8px}
+.fam button{height:52px;padding:0 14px;font-size:16px;justify-content:start;display:flex;gap:10px;align-items:center}
+.fam kbd,.keyhint kbd{font:700 13px/1 var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:3px 6px;color:inherit}
+.keyhint{color:var(--muted);font-size:15px;margin:20px 0 0}
+.result{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:26px}
+.shot{font:900 clamp(44px,5.4vw,72px)/.9 var(--f-display);text-transform:uppercase;min-height:1.8em;margin:4px 0 0;color:var(--chalk)}
+.shot.aerial{color:var(--six)}
+.shot-meta{color:var(--muted);font-size:16px;min-height:1.5em}
+.field{margin-top:auto;padding-top:18px;display:grid;place-items:center}
+.field svg{width:min(100%,340px);height:auto}
+
+/* physics */
+.phys-grid{display:grid;grid-template-columns:minmax(0,6fr) minmax(0,5fr);gap:56px;align-items:center}
+.still{border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.facts{list-style:none;padding:0;margin:28px 0 0;display:grid;gap:0}
+.facts li{padding:16px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:120px 1fr;gap:16px}
+.facts b{font:800 15px/1.3 var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--led)}
+
+/* modes */
+.modes{background:var(--night-2)}
+.daily{margin-top:44px;display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.daily-text{padding:34px}
+.daily h3{font-size:clamp(36px,4vw,54px)}
+.daily p{color:var(--muted);margin:14px 0 0}
+.strip{display:flex;flex-wrap:wrap;gap:7px;margin-top:24px;align-items:center}
+.strip span{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font:800 20px/1 var(--f-display);border:1px solid var(--line);color:var(--chalk)}
+.strip .b4{background:var(--four);color:#06210f;border-color:transparent}
+.strip .b6{background:var(--six);color:#04202e;border-color:transparent}
+.strip .bw{background:var(--wicket);color:#2a0400;border-color:transparent}
+.strip .b0{color:var(--muted)}
+.strip .bx{width:auto;padding:0 10px;border-radius:19px;font-size:17px;color:var(--led);border-color:rgba(255,182,39,.55)}
+.strip i{width:2px;height:30px;background:var(--line);margin:0 4px}
+.daily img{width:100%;height:100%;object-fit:cover;min-height:260px}
+@media (max-width:900px){.daily img{height:auto;min-height:0;aspect-ratio:16/9}}
+.mode-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:16px}
+.mode{border:1px solid var(--line);border-radius:12px;padding:22px;background:rgba(6,19,24,.5)}
+.mode h3{font-size:34px}
+.mode .tag{font:800 26px/1 var(--f-display);color:var(--led);font-variant-numeric:tabular-nums;margin-top:12px}
+.mode p{color:var(--muted);font-size:16px;margin:8px 0 0}
+.levels{margin-top:22px;color:var(--muted);font-size:16px}
+.levels b{color:var(--chalk)}
+
+/* broadcast details */
+.details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 56px;margin-top:40px}
+.detail{padding:24px 0;border-top:1px solid var(--line)}
+.detail h3{font-size:30px;color:var(--chalk)}
+.detail p{color:var(--muted);margin:8px 0 0;font-size:17px}
+
+/* final */
+.final{text-align:center;padding:120px 0 80px;background:radial-gradient(60% 70% at 50% 0%, rgba(255,240,200,.12), transparent)}
+.final h2{font-size:clamp(72px,12vw,180px)}
+.final .cta-row{justify-content:center}
+footer{border-top:1px solid var(--line);padding:26px 0;color:var(--muted);font-size:15px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+@media (max-width: 900px){
+  .hero-grid,.finder-grid,.phys-grid,.daily{grid-template-columns:1fr}
+  .hero{padding-top:40px}
+  .mode-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .details{grid-template-columns:1fr}
+  section{padding:72px 0}
+}
+@media (max-width: 520px){
+  .mode-list{grid-template-columns:1fr}
+  .pad{grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,64px)}
+  .facts li{grid-template-columns:1fr;gap:4px}
+  .top .btn small{display:none}
+  .btn{padding:14px 20px;font-size:20px}
+}
+@media (prefers-reduced-motion: reduce){
+  .boards-track{animation:none}
+  html{scroll-behavior:auto}
+  .btn,.pad button{transition:none}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="#">Air <span>Cricket</span></a>
+    <a class="btn btn-led" href="https://dhruwayush.github.io/air-cricket/">Play now</a>
+  </div>
+</header>
+
+<main>
+<section class="hero" aria-labelledby="hero-title" style="padding-bottom:72px">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Night match · in your browser</p>
+      <h1 id="hero-title">Face the bowling under the <em>floodlights.</em></h1>
+      <p class="lede">A 3D cricket batting game that runs in a browser tab and on Android. Bat with your keyboard, touch, or your camera.</p>
+      <div class="cta-row">
+        <a class="btn btn-led" href="https://dhruwayush.github.io/air-cricket/">Play in your browser</a>
+        <a class="btn btn-ghost" href="https://github.com/dhruwayush/air-cricket/releases/download/apk/air-cricket.apk">Android APK</a>
+      </div>
+      <p class="fineprint">Nothing to install in the browser. The Android app plays offline.</p>
+    </div>
+    <div class="screen">
+      <video id="reel" src="/media/air-cricket.mp4" poster="/media/poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="Gameplay: a lofted straight drive for six, a cover drive for four, and a lofted cover drive for six"></video>
+      <button class="sound" id="sound" type="button" aria-pressed="false">Sound off</button>
+    </div>
+  </div>
+</section>
+
+<div class="boards" aria-hidden="true">
+  <div class="boards-track">
+    <span>Take guard</span><span>Watch the ball</span><span>Night nets</span><span>Air cricket</span>
+    <span>Take guard</span><span>Watch the ball</span><span>Night nets</span><span>Air cricket</span>
+    <span>Take guard</span><span>Watch the ball</span><span>Night nets</span><span>Air cricket</span>
+    <span>Take guard</span><span>Watch the ball</span><span>Night nets</span><span>Air cricket</span>
+  </div>
+</div>
+
+<section class="finder" aria-labelledby="finder-title">
+  <div class="wrap">
+    <p class="eyebrow">Controls</p>
+    <h2 id="finder-title">Every key is a cricket shot.</h2>
+    <p class="lede" style="color:var(--chalk)">Aim with the arrows. The length of the ball decides front foot or back foot, so the same key drives a full ball and cuts a short one. Try it here: press the arrow keys, or tap the pad.</p>
+
+    <div class="finder-grid">
+      <div class="deck">
+        <p class="label" id="len-label">The ball is</p>
+        <div class="seg" role="group" aria-labelledby="len-label">
+          <button type="button" data-len="full" aria-pressed="true">Full, pitched up</button>
+          <button type="button" data-len="short" aria-pressed="false">Short</button>
+        </div>
+        <p class="label" id="loft-label">Shot</p>
+        <div class="seg" role="group" aria-labelledby="loft-label">
+          <button type="button" data-loft="0" aria-pressed="true">Along the ground</button>
+          <button type="button" data-loft="1" aria-pressed="false">In the air (Shift)</button>
+        </div>
+        <div class="pad-row">
+          <div>
+            <p class="label">Aim</p>
+            <div class="pad" id="pad">
+              <button type="button" data-code="upleft" aria-label="Up and left">↖</button>
+              <button type="button" data-code="up" aria-label="Up">↑</button>
+              <button type="button" data-code="upright" aria-label="Up and right">↗</button>
+              <button type="button" data-code="left" aria-label="Left">←</button>
+              <span class="mid" style="display:grid;place-items:center;border:1px dashed var(--line);border-radius:10px;font:600 12px/1.1 var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center">Bat</span>
+              <button type="button" data-code="right" aria-label="Right">→</button>
+              <button type="button" data-code="downleft" aria-label="Down and left">↙</button>
+              <button type="button" data-code="down" aria-label="Down">↓</button>
+              <button type="button" data-code="downright" aria-label="Down and right">↘</button>
+            </div>
+          </div>
+          <div>
+            <p class="label">Specials</p>
+            <div class="fam">
+              <button type="button" data-family="sweep"><kbd>Q</kbd> Sweep</button>
+              <button type="button" data-family="reverse"><kbd>E</kbd> Reverse sweep</button>
+              <button type="button" data-family="scoop"><kbd>R</kbd> Scoop</button>
+            </div>
+          </div>
+        </div>
+        <p class="keyhint">On a keyboard, press two arrows together for the diagonals, like <kbd>↑</kbd> + <kbd>→</kbd> for a cover drive. Shown for a right-handed batter.</p>
+      </div>
+
+      <div class="result" aria-live="polite">
+        <p class="label">You play</p>
+        <p class="shot" id="shot">Straight drive</p>
+        <p class="shot-meta" id="shot-meta">Front foot · along the ground</p>
+        <div class="field">
+          <svg viewBox="-110 -110 220 220" role="img" aria-labelledby="field-title">
+            <title id="field-title">Field map showing where the shot goes</title>
+            <ellipse cx="0" cy="0" rx="104" ry="104" fill="#1e5a39" stroke="rgba(238,241,231,.5)" stroke-width="1.5"/>
+            <ellipse cx="0" cy="0" rx="58" ry="62" fill="none" stroke="rgba(238,241,231,.35)" stroke-dasharray="3 4"/>
+            <rect x="-4" y="-16" width="8" height="32" rx="1.5" fill="#c9b27f"/>
+            <text x="-96" y="4" font-family="Barlow Semi Condensed" font-size="10" font-weight="700" fill="rgba(238,241,231,.55)" letter-spacing="1">LEG</text>
+            <text x="78" y="4" font-family="Barlow Semi Condensed" font-size="10" font-weight="700" fill="rgba(238,241,231,.55)" letter-spacing="1">OFF</text>
+            <path id="trail" d="M0 12 L0 -96" fill="none" stroke="#ffb627" stroke-width="3" stroke-linecap="round"/>
+            <circle id="ball" cx="0" cy="-96" r="5" fill="#eef1e7"/>
+            <circle cx="0" cy="12" r="3.5" fill="#ffb627"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="phys-title">
+  <div class="wrap phys-grid">
+    <div class="still"><img src="/media/contact.jpg" width="1280" height="720" alt="A perfectly timed straight drive at the moment of contact, with the timing meter reading Perfect" loading="lazy"></div>
+    <div>
+      <p class="eyebrow">Bat on ball</p>
+      <h2 id="phys-title">Timing turns the face.</h2>
+      <p class="lede">Bat on ball is a real collision. The bat has mass and swing speed, the ball comes off the face, and friction puts spin on it.</p>
+      <ul class="facts">
+        <li><b>Sweet spot</b><span>Hit it off the toe or the splice and it comes off slower and lower.</span></li>
+        <li><b>Edges</b><span>Outside edges fly to the slips. Inside edges can go on to the stumps.</span></li>
+        <li><b>Timing</b><span>Early goes to the leg side, late to the off side. Late on a drive sends it up.</span></li>
+        <li><b>LBW</b><span>Decided like ball tracking: where it pitched, whether it was in line, and whether it would hit.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="modes" aria-labelledby="modes-title">
+  <div class="wrap">
+    <p class="eyebrow">Modes</p>
+    <h2 id="modes-title">A new chase every midnight.</h2>
+    <div class="daily">
+      <div class="daily-text">
+        <h3>Daily challenge</h3>
+        <p>Everyone in the world faces the same deliveries today, from the same bowlers, to the same field. Your first go counts toward your streak. Then share your innings ball by ball:</p>
+        <div class="strip" aria-label="Example ball-by-ball result: 4, 1, dot, 6, wicket, 2, then 4, wide, 1, no ball hit for four, 6, dot">
+          <span class="b4">4</span><span>1</span><span class="b0">•</span><span class="b6">6</span><span class="bw">W</span><span>2</span><i></i><span class="b4">4</span><span class="bx">wd</span><span>1</span><span class="bx">nb4</span><span class="b6">6</span><span class="b0">•</span>
+        </div>
+      </div>
+      <img src="/media/four.jpg" width="1280" height="720" alt="A cover drive races to the boundary for four" loading="lazy">
+    </div>
+    <div class="mode-list">
+      <div class="mode"><h3>Chase 36</h3><div class="tag">36 off 12</div><p>Two overs, three wickets. An over of pace, then an over of spin.</p></div>
+      <div class="mode"><h3>Random chase</h3><div class="tag">6–24 balls</div><p>A random target with a replay code. Give it to a friend and you both face the same balls.</p></div>
+      <div class="mode"><h3>Super Over</h3><div class="tag">6 balls · 2 wkts</div><p>Yorkers, bouncers and slower balls with the field back. Tie it and go again.</p></div>
+      <div class="mode"><h3>Free nets</h3><div class="tag">No target</div><p>Just you, the bowler and the floodlights.</p></div>
+    </div>
+    <p class="levels">Three bowling levels: <b>Club</b>, <b>Pro</b> and <b>International</b>. Bat right- or left-handed.</p>
+  </div>
+</section>
+
+<section aria-labelledby="ground-title">
+  <div class="wrap">
+    <p class="eyebrow">Under the lights</p>
+    <h2 id="ground-title">A full ground, not a practice net.</h2>
+    <div class="details">
+      <div class="detail"><h3>A captain who moves the field</h3><p>Eleven players and a captain who sets slips after a wicket, boundary riders when you need a lot, and fills a gap once you find it twice.</p></div>
+      <div class="detail"><h3>27 batting shots</h3><p>Players modelled and animated in Blender: drives, cuts, pulls, hooks, sweeps, the reverse sweep and the scoop over the keeper.</p></div>
+      <div class="detail"><h3>Commentary in English or Hindi</h3><p>A two-voice box reacts to fours, sixes, wickets, drops and good leaves. The umpire calls wides and no balls.</p></div>
+      <div class="detail"><h3>A crowd that reacts</h3><p>It hushes at delivery, oohs at a play-and-miss and does a Mexican wave after a six, with dhol drums and horns.</p></div>
+      <div class="detail"><h3>Bat with your camera</h3><p>Swipe your hand, or a brightly coloured object, in front of the camera. A rising swipe goes in the air. A faster one hits harder.</p></div>
+      <div class="detail"><h3>Wides, no balls and free hits</h3><p>Leave the wide one, punish the no ball, and swing freely on the free hit.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="final" aria-labelledby="final-title">
+  <div class="wrap">
+    <h2 id="final-title">Take guard.</h2>
+    <div class="cta-row">
+      <a class="btn btn-led" href="https://dhruwayush.github.io/air-cricket/">Play in your browser</a>
+      <a class="btn btn-ghost" href="https://github.com/dhruwayush/air-cricket/releases/download/apk/air-cricket.apk">Android APK</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Air Cricket</span>
+    <a href="https://github.com/dhruwayush/air-cricket">Source on GitHub</a>
+  </div>
+</footer>
+
+<script>
+/* Shot finder: the same mapping the game uses (pickShot in src/game.html), for a right-handed batter,
+   so "right" is the off side. az is the shot's direction in degrees: 0 is straight back past the bowler,
+   positive is the off side. */
+const SHOTS = {
+  straight:['Straight drive',0], loft:['Lofted straight drive',0,1], cover:['Cover drive',40], loft_off:['Lofted cover drive',42,1],
+  sq_drive:['Square drive',78], late_cut:['Late cut',138], punch:['Back-foot punch',8], punch_off:['Back-foot drive',45],
+  cut:['Square cut',92], upper_cut:['Upper cut',140,1], on_drive:['On drive',-28], slog:['Slog over midwicket',-50,1],
+  flick:['Flick',-68], pull_front:['Pull',-50], pull:['Pull',-82], hook:['Hook',-100,1], glance:['Leg glance',-150],
+  glance_back:['Glance off the hips',-145], block:['Forward defence',0,0,1], back_def:['Back-foot defence',0,0,1],
+  sweep:['Sweep',-88], paddle:['Paddle sweep',-155], slog_sweep:['Slog sweep',-60,1], rev_sweep:['Reverse sweep',105], scoop:['Scoop over the keeper',180,1]
+};
+function toBatter(code) {
+  const h = code.includes('left') ? 'left' : code.includes('right') ? 'right' : '';
+  if (!h) return code === 'down' ? { side: 'B', zone: 0 } : { side: 'S', zone: 0 };
+  return { side: h === 'right' ? 'O' : 'L', zone: code.startsWith('up') ? 1 : code.startsWith('down') ? 3 : 2 };
+}
+function pickShot(side, zone, family, loft, short) {
+  if (family === 'scoop') return 'scoop';
+  if (family === 'reverse') return 'rev_sweep';
+  if (family === 'sweep') return loft ? 'slog_sweep' : zone === 3 ? 'paddle' : 'sweep';
+  if (side === 'B') return short ? 'back_def' : 'block';
+  if (side === 'S') return loft ? 'loft' : short ? 'punch' : 'straight';
+  if (side === 'O') {
+    if (zone === 1) return loft ? 'loft_off' : short ? 'punch_off' : 'cover';
+    if (zone === 2) return short ? (loft ? 'upper_cut' : 'cut') : (loft ? 'loft_off' : 'sq_drive');
+    return short && loft ? 'upper_cut' : 'late_cut';
+  }
+  if (zone === 1) return loft ? 'slog' : short ? 'pull_front' : 'on_drive';
+  if (zone === 2) return short ? (loft ? 'hook' : 'pull') : (loft ? 'slog' : 'flick');
+  return short ? 'glance_back' : 'glance';
+}
+
+const state = { short: false, loft: false, code: 'up', family: null };
+const $ = s => document.querySelector(s);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let anim = 0;
+
+function show() {
+  const { side, zone } = toBatter(state.code);
+  const key = pickShot(side, zone, state.family, state.loft, state.short);
+  const [name, az, aerial, defend] = SHOTS[key];
+  const el = $('#shot');
+  el.textContent = name; el.classList.toggle('aerial', !!aerial);
+  const foot = ['sweep', 'reverse', 'scoop'].includes(state.family) ? 'Down on one knee'
+    : state.short ? 'Back foot' : 'Front foot';
+  $('#shot-meta').textContent = `${foot} · ${defend ? 'dead bat, no run' : aerial ? 'in the air' : 'along the ground'}`;
+  // draw the line from the crease (y=12) out toward the rope; up the page is straight down the ground
+  const len = defend ? 22 : 92, r = az * Math.PI / 180;
+  const x = Math.sin(r) * len, y = 12 - Math.cos(r) * len;
+  const trail = $('#trail'), ball = $('#ball');
+  const d = aerial ? `M0 12 Q${x * 0.5 + Math.cos(r) * 22} ${(12 + y) / 2 + Math.sin(r) * 22} ${x} ${y}` : `M0 12 L${x} ${y}`;
+  trail.setAttribute('d', d);
+  trail.setAttribute('stroke-dasharray', aerial ? '6 6' : 'none');
+  trail.setAttribute('stroke', aerial ? '#8fd6ff' : '#ffb627');
+  ball.setAttribute('cx', x); ball.setAttribute('cy', y);
+  if (!reduce) {
+    const L = trail.getTotalLength(); cancelAnimationFrame(anim);
+    const t0 = performance.now();
+    const step = now => {
+      const k = Math.min(1, (now - t0) / 420), e = 1 - Math.pow(1 - k, 3);
+      const p = trail.getPointAtLength(L * e); ball.setAttribute('cx', p.x); ball.setAttribute('cy', p.y);
+      if (k < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  }
+}
+function lightUp() {
+  document.querySelectorAll('#pad button').forEach(b => b.classList.toggle('on', !state.family && b.dataset.code === state.code));
+  document.querySelectorAll('.fam button').forEach(b => b.classList.toggle('on', b.dataset.family === state.family));
+}
+function setPressed(attr, val) {
+  document.querySelectorAll(`[data-${attr}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === val)));
+}
+document.querySelectorAll('[data-len]').forEach(b => b.addEventListener('click', () => { state.short = b.dataset.len === 'short'; setPressed('len', b.dataset.len); show(); }));
+document.querySelectorAll('[data-loft]').forEach(b => b.addEventListener('click', () => { state.loft = b.dataset.loft === '1'; setPressed('loft', b.dataset.loft); show(); }));
+document.querySelectorAll('#pad button').forEach(b => b.addEventListener('click', () => { state.code = b.dataset.code; state.family = null; lightUp(); show(); }));
+document.querySelectorAll('.fam button').forEach(b => b.addEventListener('click', () => { state.family = b.dataset.family; state.code = 'left'; lightUp(); show(); }));
+
+// keyboard: arrows held together make the diagonals, like the game's chords; Shift lofts it
+const held = new Set();
+const ARROWS = { ArrowUp: 'u', ArrowDown: 'd', ArrowLeft: 'l', ArrowRight: 'r' };
+const FAM = { KeyQ: 'sweep', KeyE: 'reverse', KeyR: 'scoop' };
+function inFinder() { const r = $('.finder').getBoundingClientRect(); return r.top < innerHeight * 0.7 && r.bottom > innerHeight * 0.3; }
+addEventListener('keydown', e => {
+  if (!inFinder() || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Shift') { state.loft = true; setPressed('loft', '1'); show(); return; }
+  if (FAM[e.code]) { state.family = FAM[e.code]; state.code = 'left'; lightUp(); show(); return; }
+  const a = ARROWS[e.code]; if (!a) return;
+  e.preventDefault(); held.add(a);
+  const u = held.has('u'), d = held.has('d'), l = held.has('l'), r = held.has('r');
+  const h = l && !r ? 'left' : r && !l ? 'right' : '', v = u && !d ? 'up' : d && !u ? 'down' : '';
+  state.code = v && h ? v + h : (h || v || 'up'); state.family = null;
+  lightUp(); show();
+});
+addEventListener('keyup', e => {
+  if (e.key === 'Shift' && inFinder()) { state.loft = false; setPressed('loft', '0'); show(); }
+  const a = ARROWS[e.code]; if (a) held.delete(a);
+});
+lightUp(); show();
+
+// hero reel sound toggle
+const reel = $('#reel'), snd = $('#sound');
+snd.addEventListener('click', () => {
+  reel.muted = !reel.muted; if (!reel.muted) { reel.currentTime = 0; reel.play(); }
+  snd.setAttribute('aria-pressed', String(!reel.muted)); snd.textContent = reel.muted ? 'Sound off' : 'Sound on';
+});
+if (reduce) { reel.removeAttribute('autoplay'); reel.pause(); reel.controls = true; }
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+Air Cricket: a 3D floodlit cricket game that runs in a browser tab. Bat with your keyboard, touch, or your camera, and the bat-on-ball physics means edges really do fly to the slips. Every day there's a new chase, and everyone in the world faces the same balls: https://dhruwayush.github.io/air-cricket/

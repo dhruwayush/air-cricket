@@ -1,0 +1,61 @@
+/* Shared styles for the text pages (privacy, terms, support, 404). Tokens match index.html and the game. */
+:root{
+  --night:#08161b; --night-2:#0d2128; --panel:rgba(6,19,24,.86); --line:rgba(186,222,204,.18);
+  --chalk:#eef1e7; --muted:#9ab1a8; --led:#ffb627; --led-ink:#1d1403;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-ui:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --wrap:min(1180px, 100% - 32px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--night);color:var(--chalk);font:500 18px/1.6 var(--f-ui);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+main{flex:1}
+a{color:var(--led)}
+a:hover{color:var(--chalk)}
+:focus-visible{outline:3px solid var(--led);outline-offset:3px;border-radius:4px}
+.wrap{width:var(--wrap);margin-inline:auto}
+
+.top{position:sticky;top:0;z-index:10;background:rgba(8,22,27,.82);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.mark{font:900 28px/1 var(--f-display);text-transform:uppercase;text-decoration:none;letter-spacing:.01em;color:var(--chalk)}
+.mark span{color:var(--led)}
+.btn{display:inline-flex;align-items:center;padding:10px 16px;border-radius:8px;font:900 17px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;text-decoration:none;background:var(--led);color:var(--led-ink);border:2px solid transparent}
+.btn:hover{color:var(--led-ink);transform:translateY(-1px)}
+.btn-ghost{background:transparent;border-color:var(--line);color:var(--chalk)}
+.btn-ghost:hover{color:var(--chalk);border-color:var(--chalk)}
+
+.doc{width:min(760px, 100% - 32px);margin:0 auto;padding:72px 0 96px}
+.eyebrow{font:700 14px/1 var(--f-ui);letter-spacing:.2em;text-transform:uppercase;color:var(--led);margin:0 0 14px}
+h1,h2{font-family:var(--f-display);font-weight:900;text-transform:uppercase;line-height:.92;margin:0;text-wrap:balance}
+h1{font-size:clamp(52px,8vw,92px)}
+h2{font-size:clamp(30px,4vw,40px);margin:52px 0 12px;padding-top:24px;border-top:1px solid var(--line)}
+h3{font:700 20px/1.3 var(--f-ui);margin:28px 0 6px;color:var(--chalk)}
+.updated{color:var(--muted);font-size:16px;margin:16px 0 0}
+.lede{font-size:21px;color:var(--chalk);margin:28px 0 0}
+.doc p,.doc li{color:#d3dcd5}
+.doc ul{padding-left:1.2em}
+.doc li{margin:6px 0}
+.doc code{font:600 15px/1 ui-monospace,Menlo,Consolas,monospace;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:4px;padding:2px 6px;color:var(--chalk)}
+table{width:100%;border-collapse:collapse;margin:16px 0 0;font-size:16px}
+th,td{text-align:left;padding:12px 10px;border-top:1px solid var(--line);vertical-align:top}
+th{font:700 13px/1.2 var(--f-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+td:first-child{color:var(--chalk);font-weight:600;white-space:nowrap}
+.table-scroll{overflow-x:auto}
+.note{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--led);border-radius:8px;padding:16px 20px;margin:24px 0 0}
+details{border-top:1px solid var(--line);padding:4px 0}
+details:last-of-type{border-bottom:1px solid var(--line)}
+summary{cursor:pointer;list-style:none;padding:16px 32px 16px 0;position:relative;font:700 22px/1.25 var(--f-ui);color:var(--chalk)}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";position:absolute;right:4px;top:12px;font:800 28px/1 var(--f-display);color:var(--led)}
+details[open] summary::after{content:"–"}
+details > *:not(summary){margin-top:0}
+details p:last-child,details ul:last-child{margin-bottom:18px}
+
+footer{border-top:1px solid var(--line);padding:26px 0;color:var(--muted);font-size:15px}
+footer .wrap{display:flex;justify-content:space-between;gap:12px 24px;flex-wrap:wrap}
+footer nav{display:flex;gap:20px;flex-wrap:wrap}
+footer a{color:var(--muted)}
+footer a:hover{color:var(--chalk)}
+
+@media (max-width:520px){ td:first-child{white-space:normal} .doc{padding:48px 0 72px} }
+@media (prefers-reduced-motion: reduce){ .btn:hover{transform:none} }

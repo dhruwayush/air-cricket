@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Help · Air Cricket</title>
+<meta name="description" content="Fixes for the camera modes, slow play and installing the Android app, plus how to report a bug.">
+<link rel="canonical" href="https://air-cricket.vercel.app/support">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#08161b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="/pages.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="/">Air <span>Cricket</span></a>
+    <a class="btn" href="https://dhruwayush.github.io/air-cricket/">Play now</a>
+  </div>
+</header>
+
+<main class="doc">
+  <p class="eyebrow">Help</p>
+  <h1>Help and support</h1>
+  <p class="lede">Fixes for the most common problems. If yours isn't here, <a href="https://github.com/dhruwayush/air-cricket/issues/new">report it on GitHub</a>.</p>
+
+  <h2>Playing</h2>
+  <details>
+    <summary>How do I bat?</summary>
+    <p>Aim with the arrow keys and press just before the ball reaches you. The length of the ball decides front foot or back foot, so the same key drives a full ball and cuts a short one. Hold <code>Shift</code> to hit it in the air, and press <code>A</code> or <code>D</code> to step across the crease. <a href="/#finder-title">Try every shot on the home page</a>.</p>
+    <p>On a phone, use the on-screen pad: the same 8 directions plus Loft, Sweep, Rev and Scoop.</p>
+  </details>
+  <details>
+    <summary>When does the daily challenge change?</summary>
+    <p>At midnight on your device's clock. Only your first go each day counts toward your streak. Later goes that day are practice.</p>
+  </details>
+  <details>
+    <summary>Where are my scores and streak saved?</summary>
+    <p>In your browser on this device. They don't carry over to another browser or phone, and clearing your browser's site data deletes them.</p>
+  </details>
+  <details>
+    <summary>How do I turn off the commentary or sound?</summary>
+    <p>Open <b>Menu</b> and set <b>Commentary</b> to English, हिंदी or Off. The <b>Sound</b> button in the top right mutes everything.</p>
+  </details>
+
+  <h2>Camera modes</h2>
+  <details>
+    <summary>The camera doesn't start</summary>
+    <ul>
+      <li>Play from <a href="https://dhruwayush.github.io/air-cricket/">the official link</a>. Browsers only allow the camera on <code>https://</code> pages, so a downloaded copy of the game can't use it.</li>
+      <li>Allow camera access when your browser asks. If you said no before, allow it from the camera icon in the address bar or in your browser's site settings, then reload.</li>
+      <li>Close other apps that are using the camera, like video calls.</li>
+      <li>On Android, check Settings → Apps → Air Cricket → Permissions → Camera.</li>
+    </ul>
+  </details>
+  <details>
+    <summary>Camera · hand is stuck loading</summary>
+    <p>Hand tracking downloads its model from the internet the first time you use it, including in the Android app. Check your connection and try again. If it still won't load, use <b>Camera · object as bat</b>, which needs no download.</p>
+  </details>
+  <details>
+    <summary>My swings aren't picked up</summary>
+    <ul>
+      <li>Stand where the camera can see your arm all the way through the swing, with light in front of you rather than behind.</li>
+      <li>For <b>object as bat</b>, hold something brightly coloured that stands out from your clothes and the room.</li>
+      <li>Swipe flat left or right to play square, down and across to drive, and straight down for a straight drive. A rising swipe goes in the air. Push toward the camera to block.</li>
+    </ul>
+  </details>
+
+  <h2>Performance</h2>
+  <details>
+    <summary>The game is slow or choppy</summary>
+    <p>Open <b>Menu</b> and set <b>Graphics</b> to <b>Fast</b>. It turns off shadows and draws fewer pixels. <b>Auto</b> does this for you if play keeps running slowly. Closing other tabs also helps.</p>
+  </details>
+  <details>
+    <summary>The page stays blank</summary>
+    <p>Air Cricket needs WebGL. Update your browser, and check that hardware acceleration is turned on in its settings. Browser extensions that block scripts from other sites can also stop it from loading.</p>
+  </details>
+
+  <h2>Android app</h2>
+  <details>
+    <summary>How do I install the APK?</summary>
+    <p>Download <a href="https://github.com/dhruwayush/air-cricket/releases/download/apk/air-cricket.apk"><code>air-cricket.apk</code></a> on your phone, open it, and allow installing from that source when Android asks. The app isn't on the Play Store yet.</p>
+  </details>
+  <details>
+    <summary>How do I update the app?</summary>
+    <p>Download the latest APK from the same link and open it. It installs over the old version, so you don't need to uninstall, and your scores stay.</p>
+  </details>
+  <details>
+    <summary>Does the app work offline?</summary>
+    <p>Yes. The game, the 3D library and the fonts are built in. Only <b>Camera · hand</b> needs the internet, the first time, to download its model.</p>
+  </details>
+
+  <h2>Report a bug or suggest an idea</h2>
+  <p><a href="https://github.com/dhruwayush/air-cricket/issues/new">Open an issue on GitHub</a>. Say whether you play in a browser or the app, your device, the mode and level, and what happened. For daily challenge bugs, include the date.</p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Air Cricket</span>
+    <nav aria-label="Footer"><a href="/support" aria-current="page">Help</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://github.com/dhruwayush/air-cricket">Source on GitHub</a></nav>
+  </div>
+</footer>
+</body>
+</html>

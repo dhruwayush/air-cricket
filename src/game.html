@@ -593,9 +593,77 @@ const ground = new THREE.Mesh(new THREE.CircleGeometry(BOUNDARY_R + 16, 96), gro
 ground.receiveShadow = true;
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, PITCH_C); scene.add(ground);
 
-/* boundary rope */
-const rope = new THREE.Mesh(new THREE.TorusGeometry(BOUNDARY_R, 0.14, 6, 180), std(0xf4f1e6, 0.8));
-rope.rotation.x = Math.PI / 2; rope.position.set(0, 0.12, PITCH_C); scene.add(rope);
+/* several simple shapes folded into one mesh, so a whole structure is a single draw call;
+   each part keeps its own colour in the vertex colours */
+function mergeParts(parts) {
+  const gs = parts.map(p => { const g = p.geo.index ? p.geo.toNonIndexed() : p.geo.clone(); if (p.m) g.applyMatrix4(p.m); return g; });
+  const n = gs.reduce((s, g) => s + g.attributes.position.count, 0);
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  let o = 0;
+  gs.forEach((g, i) => {
+    const k = g.attributes.position.count, c = lin(parts[i].color);
+    pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3);
+    for (let j = 0; j < k; j++) { col[(o + j) * 3] = c.r; col[(o + j) * 3 + 1] = c.g; col[(o + j) * 3 + 2] = c.b; }
+    o += k; g.dispose(); parts[i].geo.dispose();
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return out;
+}
+const _o3 = new THREE.Object3D();
+// a matrix that stands a part at angle th round the ground (th = 0 is behind the striker, PI behind the bowler),
+// radius r and height y, turned to face the pitch
+function ringMatrix(th, r, y, local) {
+  _o3.position.set(r * Math.sin(th), y, PITCH_C + r * Math.cos(th)); _o3.rotation.set(0, th + Math.PI, 0); _o3.updateMatrix();
+  return local ? _o3.matrix.clone().multiply(local) : _o3.matrix.clone();
+}
+const at = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
+
+/* boundary rope: a padded cushion like the ones at international grounds, wrapped in sponsor panels.
+   Its inner edge sits on the boundary line, so touching it is four. */
+const ROPE = { w: 0.46, h: 0.3, seg: 540, prof: 10, reps: 32 };
+const ropeTex = (() => {
+  const W = 2048, H = 128, panelM = 2 * Math.PI * (BOUNDARY_R + ROPE.w / 2) / ROPE.reps / 2;   // two panels per tile
+  // the canvas is squashed onto the cushion: a pixel across is panelM*2/W metres, a pixel down about 0.34/(H/2)
+  const sx = (W / (panelM * 2)) / ((H / 2) / 0.34);
+  return canvasTex(W, H, (g, w, h) => {
+    [['#16244d', '#f2f2ee', 'AIR CRICKET'], ['#f0a431', '#16244d', 'NIGHT NETS']].forEach(([bg, fg, word], k) => {
+      const x0 = k * w / 2;
+      g.fillStyle = bg; g.fillRect(x0, 0, w / 2, h);
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x0, h * 0.47, w / 2, h * 0.06);          // seam along the crest
+      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x0, 0, 3, h);                                  // panel join
+      // the inner face (bottom half of the canvas) carries the name, upright as seen from the pitch
+      g.save(); g.translate(x0 + w / 4, h * 0.74); g.scale(sx, 1);
+      g.font = 'bold 40px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = fg; g.fillText(word, 0, 2); g.restore();
+    });
+  });
+})();
+ropeTex.wrapS = THREE.RepeatWrapping;
+{
+  const { w, h, seg, prof, reps } = ROPE, rc = BOUNDARY_R + w / 2;
+  const pos = [], uv = [], idx = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = -2 * Math.PI * i / seg;                 // u runs left to right as seen from the middle
+    for (let j = 0; j <= prof; j++) {
+      const t = Math.PI * j / prof, r = rc - Math.cos(t) * w / 2, y = h * Math.pow(Math.sin(t), 0.75);
+      pos.push(r * Math.sin(a), y, r * Math.cos(a));
+      uv.push(i / seg * reps, j / prof);              // v: inner foot 0, crest 0.5, outer foot 1
+    }
+  }
+  for (let i = 0; i < seg; i++) for (let j = 0; j < prof; j++) {
+    const a = i * (prof + 1) + j, b = a + prof + 1;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const rope = new THREE.Mesh(g, std(0xffffff, 0.55, 0, { map: ropeTex, envMapIntensity: 0.5 }));
+  rope.position.set(0, 0, PITCH_C); scene.add(rope);
+}
 
 /* the 30-yard circle: white discs round both sets of stumps, joined along the sides */
 {
@@ -611,16 +679,133 @@ rope.rotation.x = Math.PI / 2; rope.position.set(0, 0.12, PITCH_C); scene.add(ro
   scene.add(dots);
 }
 
-/* LED hoardings */
-const adTex = canvasTex(2048, 64, (g, w, h) => {
-  g.fillStyle = '#071319'; g.fillRect(0, 0, w, h);
-  g.font = 'bold 40px "Arial Narrow", Arial, sans-serif'; g.textBaseline = 'middle';
-  const words = ['AIR CRICKET', 'NIGHT NETS', 'TAKE GUARD', 'WATCH THE BALL'];
-  let x = 20, i = 0;
-  while (x < w) { const s = words[i++ % words.length]; g.fillStyle = i % 2 ? '#ffb627' : '#e9efe6'; g.fillText(s, x, h / 2 + 2); x += g.measureText(s).width + 70; }
-}, [-3, 1]);   // negative repeat: the boards are seen from inside, so flip the text back
-const hoarding = new THREE.Mesh(new THREE.CylinderGeometry(BOUNDARY_R + 15, BOUNDARY_R + 15, 1.2, 128, 1, true), basic({ map: adTex, side: THREE.BackSide }));
-hoarding.position.set(0, 0.6, PITCH_C); scene.add(hoarding);
+/* LED boards: a ring of advertising boards 10 m behind the rope, leaning back a little on a black frame.
+   They cycle through ads with a wipe and light up for fours, sixes, wickets and free hits. Up close you
+   can see the diodes; from further away the grid fades out instead of shimmering. */
+const BOARD = { r: BOUNDARY_R + 10, y0: 0.12, h: 0.88, lean: 12 * DEG, reps: 16, rows: 8, rowPx: 64 };
+BOARD.rTop = BOARD.r + BOARD.h * Math.tan(BOARD.lean);
+const SCREEN = { r: BOARD.r + 2.6, w: 18, h: 7.2, y0: 0.45 };          // sightscreens behind the boards at both ends
+SCREEN.span = SCREEN.w / SCREEN.r;
+const BOARD_SLIDES = { four: 4, six: 5, wicket: 6, free: 7 };            // rows 0-3 are ads
+const boardTex = canvasTex(2048, BOARD.rows * BOARD.rowPx, (g, w, H) => {
+  const h = BOARD.rowPx, pad = 9;          // content stays inside the row so far-off mipmaps don't bleed between slides
+  g.fillStyle = '#000'; g.fillRect(0, 0, w, H);
+  const font = (px, weight) => `${weight || 'bold'} ${px}px "Arial Narrow", Arial, sans-serif`;
+  const text = (s, x, y, px, col, align) => { g.font = font(px); g.fillStyle = col; g.textAlign = align || 'center'; g.textBaseline = 'middle'; g.fillText(s, x, y); };
+  const slides = [
+    (y, c) => {                            // the game's own name, twice per tile
+      const gr = g.createLinearGradient(0, y, 0, y + h); gr.addColorStop(0, '#1f3570'); gr.addColorStop(1, '#101c3d');
+      g.fillStyle = gr; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (const x of [w * 0.25, w * 0.75]) { text('AIR CRICKET', x - 60, c, 38, '#f0a431'); text('NIGHT NETS', x + 150, c + 2, 24, '#e9efe6'); }
+    },
+    (y, c) => {
+      g.fillStyle = '#f0a431'; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 4; k++) { g.fillStyle = '#16244d'; g.fillRect(k * w / 4, y + pad, 60, h - 2 * pad); text('TAKE GUARD', k * w / 4 + 280, c + 1, 36, '#16244d'); }
+    },
+    (y, c) => {
+      g.fillStyle = '#0a1014'; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 3; k++) {
+        const x = (k + 0.5) * w / 3;
+        g.fillStyle = '#f4f1e6'; g.beginPath(); g.arc(x - 190, c, 15, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#c8453c'; g.lineWidth = 2.5; g.beginPath(); g.arc(x - 190, c, 15, -1.1, 1.1); g.stroke();
+        text('WATCH THE BALL', x + 30, c + 1, 34, '#f4f1e6');
+      }
+    },
+    (y, c) => {
+      const gr = g.createLinearGradient(0, 0, w, 0);
+      for (let k = 0; k <= 8; k++) gr.addColorStop(k / 8, k % 2 ? '#2c55c0' : '#3aa6c8');
+      g.fillStyle = gr; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 4; k++) text('SWEET SPOT', (k + 0.5) * w / 4, c + 1, 36, '#ffffff');
+    },
+    (y, c) => {                            // FOUR: big and scrolling
+      g.fillStyle = '#2c55c0'; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 8; k++) { text('FOUR', (k + 0.3) * w / 8, c + 1, 44, '#ffffff'); text('4', (k + 0.78) * w / 8, c + 1, 44, '#f0a431'); }
+    },
+    (y, c) => {
+      const gr = g.createLinearGradient(0, 0, w, 0);
+      for (let k = 0; k <= 12; k++) gr.addColorStop(k / 12, k % 2 ? '#f0a431' : '#d8365e');
+      g.fillStyle = gr; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 8; k++) text('SIX', (k + 0.5) * w / 8, c + 1, 46, '#ffffff');
+    },
+    (y, c) => {
+      g.fillStyle = '#b3262e'; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 6; k++) text('WICKET', (k + 0.5) * w / 6, c + 1, 44, '#ffffff');
+    },
+    (y, c) => {
+      g.fillStyle = '#12825a'; g.fillRect(0, y + pad, w, h - 2 * pad);
+      for (let k = 0; k < 6; k++) text('FREE HIT', (k + 0.5) * w / 6, c + 1, 42, '#ffffff');
+    },
+  ];
+  slides.forEach((draw, k) => draw(k * h, k * h + h / 2));
+}, null);
+boardTex.wrapS = THREE.RepeatWrapping;
+const boardMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  extensions: { derivatives: true },
+  uniforms: { map: { value: boardTex }, time: { value: 0 }, cur: { value: 0 }, prev: { value: 0 }, k: { value: 1 }, flash: { value: 0 },
+              reps: { value: BOARD.reps }, rows: { value: BOARD.rows }, texW: { value: 2048 }, rowPx: { value: BOARD.rowPx },
+              darkW: { value: SCREEN.span / 2 + 0.01 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D map; uniform float time, cur, prev, k, flash, reps, rows, texW, rowPx, darkW; varying vec2 vUv;
+    vec3 slide(float row, float u, float v){
+      float s = row > 3.5 ? time * 0.04 : 0.0;                // the event slides scroll round the ground
+      return texture2D(map, vec2(u * reps + s, (rows - row - 1.0 + v) / rows)).rgb;
+    }
+    void main(){
+      float u = 1.0 - vUv.x, v = vUv.y;                       // seen from inside, so run the slides the other way
+      float w = clamp(k * 1.6 - fract(u * reps) * 0.6, 0.0, 1.0);   // the new slide wipes across each tile
+      vec3 c = mix(slide(prev, u, v), slide(cur, u, v), w);
+      c *= 1.0 + flash * 0.45 * step(0.5, fract(time * 2.5));
+      // diodes: a round light per texel, faded out once they get smaller than a screen pixel
+      vec2 px = vec2(u * reps * texW, v * rowPx);
+      float fw = max(fwidth(px.x), fwidth(px.y)), led = 1.0 - smoothstep(0.3, 0.5, length(fract(px) - 0.5));
+      c *= mix(1.0, 0.3 + 1.0 * led, clamp(1.2 - fw, 0.0, 1.0));
+      // the boards in front of the sightscreens stay dark, so nothing moves behind the bowler's arm
+      float th = vUv.x * 6.2831853;
+      c *= smoothstep(darkW, darkW + 0.006, min(abs(atan(sin(th), cos(th))), abs(atan(-sin(th), -cos(th)))));
+      gl_FragColor = vec4(c * 1.1, 1.0);
+    }`,
+});
+const boardFace = new THREE.Mesh(new THREE.CylinderGeometry(BOARD.rTop, BOARD.r, BOARD.h, 256, 1, true), boardMat);
+boardFace.position.set(0, BOARD.y0 + BOARD.h / 2, PITCH_C); scene.add(boardFace);
+const boards = {
+  cur: 0, ad: 0, next: 7, hold: 0, time: 0,
+  go(row) { const u = boardMat.uniforms; if (row === u.cur.value) return; u.prev.value = u.cur.value; u.cur.value = row; u.k.value = 0; },
+  show(kind) { this.go(BOARD_SLIDES[kind]); this.hold = kind === 'free' ? 6 : 5; boardMat.uniforms.flash.value = kind === 'free' ? 0 : 1; },
+  update(dt) {
+    const u = boardMat.uniforms;
+    this.time += dt; u.time.value = this.time; u.k.value = Math.min(1, u.k.value + dt / 0.7);
+    if (this.hold > 0) { this.hold -= dt; if (this.hold < 3) u.flash.value = 0; if (this.hold <= 0) { this.next = 7; this.go(this.ad); } }
+    else if ((this.next -= dt) <= 0) { this.next = 7; this.ad = (this.ad + 1) % 4; this.go(this.ad); }
+  },
+};
+
+/* round the edge of the ground: the boards' frame, a walkway, the low wall in front of the stands, and the
+   black sightscreens at both ends, which give the white ball a dark background out of the bowler's hand.
+   All one mesh, coloured per part. */
+{
+  const B = BOARD, S = SCREEN, flat = new THREE.Matrix4().makeRotationX(-Math.PI / 2), lvl = (y, m) => at(0, y, PITCH_C).multiply(m || new THREE.Matrix4());
+  const parts = [
+    { geo: new THREE.CylinderGeometry(B.r, B.r, B.y0, 256, 1, true), m: lvl(B.y0 / 2), color: 0x050708 },                        // skirt under the screen
+    { geo: new THREE.CylinderGeometry(B.r + 0.45, B.r + 0.45, B.y0 + B.h + 0.04, 256, 1, true), m: lvl((B.y0 + B.h + 0.04) / 2), color: 0x0d1418 },   // back
+    { geo: new THREE.RingGeometry(B.rTop - 0.02, B.r + 0.46, 256), m: lvl(B.y0 + B.h + 0.04, flat), color: 0x1d262c },          // top cap
+    { geo: new THREE.RingGeometry(B.r + 0.46, 80.4, 160), m: lvl(0.012, flat), color: 0x26323a },                               // walkway
+    { geo: new THREE.CylinderGeometry(79.8, 79.8, 1.4, 160, 1, true), m: lvl(0.7), color: 0x16244d },                            // stand wall
+    { geo: new THREE.RingGeometry(79.65, 79.95, 160), m: lvl(1.4, flat), color: 0xb9c0c4 },                                      // its rail
+  ];
+  for (const th of [0, Math.PI]) {
+    const a0 = th - S.span / 2, mid = S.y0 + S.h / 2;
+    parts.push({ geo: new THREE.CylinderGeometry(S.r, S.r, S.h, 24, 1, true, a0, S.span), m: lvl(mid), color: 0x06080a });       // the screen
+    parts.push({ geo: new THREE.CylinderGeometry(S.r + 0.08, S.r + 0.08, 0.3, 24, 1, true, a0, S.span), m: lvl(S.y0 + S.h + 0.1), color: 0x2b343a });   // top rail
+    parts.push({ geo: new THREE.CylinderGeometry(S.r + 0.08, S.r + 0.08, 0.3, 24, 1, true, a0, S.span), m: lvl(S.y0 - 0.05), color: 0x2b343a });        // bottom rail
+    for (const e of [-0.5, -1 / 6, 1 / 6, 0.5])                                                                                   // uprights
+      parts.push({ geo: new THREE.BoxGeometry(0.32, S.h + 0.6, 0.32), m: ringMatrix(th + e * S.span, S.r + 0.25, (S.y0 + S.h) / 2 + 0.15), color: 0x2b343a });
+    parts.push({ geo: new THREE.BoxGeometry(S.w + 1.2, 0.4, 2.2), m: ringMatrix(th, S.r + 0.6, 0.2), color: 0x1c2328 });                // wheeled base
+  }
+  const edge = new THREE.Mesh(mergeParts(parts), std(0xffffff, 0.85, 0.05, { vertexColors: true, side: THREE.DoubleSide, envMapIntensity: 0.3 }));
+  scene.add(edge);
+}
 
 /* stands + crowd: spectators drawn seat by seat, animated in a shader so they bob, jump and do the wave */
 const CROWD = { cols: 116, rows: 32, reps: 9 };
@@ -759,15 +944,30 @@ const glowTex = canvasTex(128, 128, (g, w, h) => {
   gr.addColorStop(0, 'rgba(255,250,235,1)'); gr.addColorStop(0.18, 'rgba(255,240,210,.55)'); gr.addColorStop(1, 'rgba(255,230,190,0)');
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
 });
-for (let k = 0; k < 4; k++) {
-  const a = Math.PI / 4 + k * Math.PI / 2, R = 128;
-  const x = Math.cos(a) * R, z = PITCH_C + Math.sin(a) * R;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.3, 58, 8), std(0x1a272d, 0.6, 0.4));
-  mast.position.set(x, 29, z); scene.add(mast);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(12, 7, 1), basic({ color: 0xfff6e0 }));
-  head.position.set(x, 60, z); head.lookAt(0, 0, PITCH_C); scene.add(head);
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true, toneMapped: false }));
-  glow.scale.set(60, 60, 1); glow.position.set(x, 60, z); scene.add(glow);
+// each tower: a tapering mast with service platforms, and a head frame aimed at the pitch carrying
+// a grid of lamps and a catwalk. All four towers are one mesh, and all their lamps another.
+{
+  const steel = [], lamps = [], glowMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true, toneMapped: false });
+  TOWERS.forEach(t => {
+    steel.push({ geo: new THREE.CylinderGeometry(0.7, 1.4, 58, 12), m: at(t.x, 29, t.z), color: 0x1a272d });
+    for (const y of [20, 40]) steel.push({ geo: new THREE.CylinderGeometry(2.2, 2.2, 0.3, 16), m: at(t.x, y, t.z), color: 0x26343b });
+    _o3.position.copy(t); _o3.rotation.set(0, 0, 0); _o3.lookAt(0, 0, PITCH_C); _o3.updateMatrix();
+    const head = _o3.matrix.clone().multiply(at(0, 0, 1.8)), local = (x, y, z) => head.clone().multiply(at(x, y, z));   // the head hangs in front of the mast
+    steel.push({ geo: new THREE.BoxGeometry(13.4, 8.2, 0.7), m: local(0, 0, -0.35), color: 0x222d33 });       // frame
+    steel.push({ geo: new THREE.BoxGeometry(1.4, 1.4, 2.4), m: local(0, -2.5, -1.5), color: 0x1a272d });      // bracket onto the mast
+    for (let c = 0; c <= 6; c++) steel.push({ geo: new THREE.BoxGeometry(0.16, 8.2, 0.3), m: local((c - 3) * 2.1, 0, 0.12), color: 0x30393e });
+    steel.push({ geo: new THREE.BoxGeometry(14, 0.22, 1.8), m: local(0, -4.4, 0.7), color: 0x30393e });      // catwalk
+    steel.push({ geo: new THREE.BoxGeometry(14, 0.7, 0.06), m: local(0, -3.9, 1.6), color: 0x30393e });      // its rail
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) {
+      const x = (c - 2.5) * 2.1, y = (r - 1.5) * 1.85;
+      steel.push({ geo: new THREE.CylinderGeometry(0.82, 0.92, 0.5, 14, 1, true), m: local(x, y, 0.3).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2)), color: 0x151c20 });   // lamp housing
+      lamps.push({ geo: new THREE.CircleGeometry(0.72, 14), m: local(x, y, 0.42), color: 0xffffff });
+    }
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.set(60, 60, 1); glow.position.copy(t); scene.add(glow);
+  });
+  scene.add(new THREE.Mesh(mergeParts(steel), std(0xffffff, 0.6, 0.4, { vertexColors: true, side: THREE.DoubleSide })));
+  scene.add(new THREE.Mesh(mergeParts(lamps), basic({ color: 0xfff6e0 })));
 }
 
 /* what shiny kit reflects: a small stand-in stadium with a night sky, lit stands, grass and the four light banks,
@@ -1283,9 +1483,9 @@ function driveRuns(now) {
 /* ---- the crowd reacts ---- */
 function crowdReact(kind, v) {
   v = v == null ? 1 : v;
-  if (kind === 'six') { sound.roar(1); crowdFx.pulse(1, 3.2); crowdFx.startWave(); }
-  else if (kind === 'four') { sound.cheer(1); crowdFx.pulse(0.8, 2.2); }
-  else if (kind === 'wicket') { sound.roar(0.9); crowdFx.pulse(0.95, 2.6); }
+  if (kind === 'six') { sound.roar(1); crowdFx.pulse(1, 3.2); crowdFx.startWave(); boards.show('six'); }
+  else if (kind === 'four') { sound.cheer(1); crowdFx.pulse(0.8, 2.2); boards.show('four'); }
+  else if (kind === 'wicket') { sound.roar(0.9); crowdFx.pulse(0.95, 2.6); boards.show('wicket'); }
   else if (kind === 'runs') { sound.applaud(0.35 + 0.2 * v); crowdFx.pulse(0.3 + 0.1 * v, 1); }
   else if (kind === 'ooh') { sound.ooh(v); crowdFx.pulse(0.35, 0.8); }
   else if (kind === 'groan') { sound.groan(); crowdFx.pulse(0.45, 1); }
@@ -2724,7 +2924,7 @@ function nextBall() {
     if (need === 1 && !state.saidNeedOne) { state.saidNeedOne = true; commentary.say('need_one', { pri: 1, delay: 0.6 }); }
     else if (left === 1 && need > 1 && need <= 6) commentary.say('last_ball', { pri: 1, delay: 0.6 });
   }
-  if (state.freeHit) callout('Free hit', 'Swing freely: you can’t be out', 'c-free');
+  if (state.freeHit) { callout('Free hit', 'Swing freely: you can’t be out', 'c-free'); boards.show('free'); }
   else if (state.balls === 0 && !state.rebowl && match.kind !== 'chase' && match.kind !== 'nets') callout(match.label + (match.practice ? ' · practice' : ''), matchIntro(), 'c-quiet');
   else if (state.over1Hint && state.balls === 0) callout('Watch the bounce', 'Swing just before the ball reaches you', 'c-quiet');
   else if (change) callout(change.main, change.sub, 'c-quiet');
@@ -3278,7 +3478,7 @@ function tick(ms) {
   }
 
   if (phase === 'hit' && swing && !swing.rose && ballPos.y > 7) { swing.rose = true; sound.rising(); crowdFx.pulse(0.55, 1.6); }
-  crowdFx.update(wallDt);
+  crowdFx.update(wallDt); boards.update(wallDt);
 
   /* ball visuals */
   if (phase !== 'menu' && phase !== 'over') {

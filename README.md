@@ -96,6 +96,7 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - **Random chase.** A random target (6 to 24 balls, 1 to 3 wickets, and a bowling attack of pace, spin, mixed or death bowling) with a replay code. Replay the same code, or give it to a friend, and you both face the same balls.
 - **Super Over.** Six balls, two wickets, against a death-bowling attack of yorkers, bouncers and slower balls, with the field back. The opposition's score is set first; tie it and you go to another Super Over.
 - **Free nets** with no target.
+- **Play a friend.** Up to four players in a room, each on their own phone or browser. One of you creates a room and sends the four-letter code (or the **Invite** link); the others join with it. When the host presses **Start match**, the room picks a random chase and everyone faces exactly the same balls at the host's level. Everyone else's score shows under your scoreboard after every ball, and the end screen ranks you: a chase completed sooner beats one completed later, then most runs, then fewest wickets. The host can start a **New match** for everyone. If your connection drops, the game rejoins the room by itself and keeps your score.
 - Three bowling levels: Club, Pro, International
 - Right- or left-handed batting
 
@@ -110,6 +111,7 @@ Your daily results, streak and wins in each mode are kept in the browser (`local
 | `tools/build_page.py` | Embeds the models and commentary into `src/game.html` and writes `index.html` |
 | `tools/voice_lines.py` | Every commentary line, and a script that records them with Edge's neural voices |
 | `sounds/voice/<group>/<id>.mp3` | Recorded commentary clips, embedded by `build_page.py` |
+| `server/` | The room server for Play a friend: a Cloudflare Worker (see [server/README.md](server/README.md)) |
 
 ```sh
 pip install bpy==4.2.0            # Blender as a Python module (Python 3.11)

@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['README.md', 'tools/players.py', 'tools/build/**']
+    paths-ignore: ['README.md', 'tools/players.py', 'tools/build/**', 'server/**']
   workflow_dispatch:
 
 permissions:

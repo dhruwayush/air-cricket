@@ -1,0 +1,13 @@
+{
+  "name": "air-cricket-rooms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rooms for Air Cricket's Play a friend mode: a Cloudflare Worker with one Durable Object per room",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.141.0"
+  }
+}

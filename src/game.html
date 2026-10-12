@@ -143,6 +143,35 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
 .share-text{width:100%;box-sizing:border-box;margin:0 0 14px;padding:10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--chalk);font:500 14px/1.45 var(--f-ui);resize:none}
 .mode-info{margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.03);font-size:14px;line-height:1.45;color:var(--muted);max-width:60ch}
 .mode-info b{color:var(--chalk);font-weight:700}
+.online{margin-top:10px;display:grid;gap:10px}
+.online .field{display:grid;gap:4px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;max-width:260px}
+.online input{font:600 16px/1 var(--f-ui);color:var(--chalk);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.online input:focus-visible{outline:2px solid var(--chalk);outline-offset:1px}
+#net-code{width:7.5em;text-transform:uppercase;letter-spacing:.2em;text-align:center}
+.online-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.online .or{color:var(--muted);font-size:13px}
+.btn.small{padding:10px 14px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:default}
+.room-code{font-size:14px;color:var(--muted);margin-right:4px}
+.room-code b{font-family:var(--f-display);font-size:30px;letter-spacing:.12em;color:var(--led);vertical-align:-4px;margin-left:6px}
+.roster{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:14px}
+.roster li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;color:var(--chalk)}
+.roster li .who{display:flex;gap:6px;align-items:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.roster li .st{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.roster .badge{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.roster .away{opacity:.55}
+.net-status{margin:0;font-size:13px;color:var(--muted);min-height:1em}
+.net-status.err{color:#ff8a7a}
+.rivals{margin-top:6px;display:grid;gap:2px;font-size:13px;font-variant-numeric:tabular-nums}
+.rivals .rv{display:flex;justify-content:space-between;gap:10px;color:var(--muted);white-space:nowrap}
+.rivals .rv b{color:var(--chalk);font-weight:700}
+.rivals .rv.away{opacity:.55}
+.rivals .nm{overflow:hidden;text-overflow:ellipsis;max-width:9em}
+.h2h{margin:-4px 0 16px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.h2h .verdict{padding:10px 12px;font-weight:700;color:var(--chalk);background:rgba(255,255,255,.04)}
+.h2h .row{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.h2h .row b{color:var(--chalk)}
+.h2h .row.me{color:var(--chalk)}
 .mode-info .tag{display:inline-block;margin-right:6px;padding:2px 7px;border-radius:999px;background:var(--led);color:var(--led-ink);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 fieldset:disabled .seg label{opacity:.45;cursor:default}
 
@@ -194,6 +223,7 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
     <div class="score"><span id="runs">0</span><span class="slash">/</span><span id="wkts">0</span></div>
     <div class="board-row"><span>Overs <b id="overs">0.0</b></span><span id="need">Need 36 off 12</span></div>
     <div class="strip" id="strip"></div>
+    <div class="rivals" id="rivals" hidden></div>
     <div class="chips">
       <span class="chip" id="chip-guard">Guard · Middle</span>
       <span class="chip" id="chip-loft">Aerial off</span>
@@ -279,8 +309,27 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
         <input type="radio" name="mode" id="mode-random" value="random"><label for="mode-random">Random chase</label>
         <input type="radio" name="mode" id="mode-super" value="super"><label for="mode-super">Super Over</label>
         <input type="radio" name="mode" id="mode-nets" value="nets"><label for="mode-nets">Free nets</label>
+        <input type="radio" name="mode" id="mode-online" value="online"><label for="mode-online">Play a friend</label>
       </div>
-      <div class="mode-info" id="mode-info" aria-live="polite"></div></fieldset>
+      <div class="mode-info" id="mode-info" aria-live="polite"></div>
+      <div class="online" id="online" hidden>
+        <div id="net-lobby">
+          <label class="field"><span>Your name</span><input id="net-name" maxlength="16" autocomplete="nickname" placeholder="Player"></label>
+          <div class="online-row">
+            <button class="btn small primary" id="net-create" type="button">Create a room</button>
+            <span class="or">or</span>
+            <input id="net-code" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Room code">
+            <button class="btn small" id="net-join" type="button">Join</button>
+          </div>
+        </div>
+        <div id="net-room-box" hidden>
+          <div class="online-row"><span class="room-code">Room <b id="net-room"></b></span>
+            <button class="btn small" id="net-invite" type="button">Invite</button>
+            <button class="btn small" id="net-leave" type="button">Leave</button></div>
+          <ul class="roster" id="net-roster"></ul>
+        </div>
+        <p class="net-status" id="net-status" aria-live="polite"></p>
+      </div></fieldset>
       <fieldset id="level-set"><legend>Bowling level</legend><div class="seg">
         <input type="radio" name="level" id="level-club" value="club" checked><label for="level-club">Club</label>
         <input type="radio" name="level" id="level-pro" value="pro"><label for="level-pro">Pro</label>
@@ -345,6 +394,7 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
     <h2 id="end-title">Chase complete</h2>
     <p class="end-line" id="end-line"></p>
     <div class="end-stats" id="end-stats"></div>
+    <div class="h2h" id="end-h2h" hidden></div>
     <p class="end-note" id="end-note" hidden></p>
     <textarea class="share-text" id="share-text" rows="5" readonly hidden aria-label="Result to copy"></textarea>
     <div class="actions" id="end-actions"></div>
@@ -398,6 +448,10 @@ const BOWLING = { mixed: 'Pace and spin', pace: 'Pace attack', spin: 'Spin trap'
 function makeMatch(kind, opts) {
   opts = opts || {};
   if (kind === 'nets') return { kind, label: 'Nets', target: null, balls: null, wkts: null, bowling: 'mixed', seed: null };
+  if (kind === 'online') {                     // Play a friend: the room's chase, at the host's level, the same balls for everyone
+    const o = opts.code != null ? opts : net.match || {};
+    return Object.assign(makeMatch('random', { code: o.code }), { kind, level: o.level || 'pro', round: o.round || 0 });
+  }
   if (kind === 'super') {
     const seed = opts.seed != null ? opts.seed : (Math.random() * 2147483647) >>> 0, R = rng(seed);
     const theirs = [9, 11, 12, 13, 14, 15, 15, 16, 17, 18, 19, 21][(R() * 12) | 0];
@@ -466,6 +520,21 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 1200);
 const view = { padOn: false, bottom: 0 };
 // pause: the menu freezes a ball in play where it is, and Resume carries on from that moment
 const pause = { on: false, drawn: false, wall: 0 };
+// Play a friend (see PLAY A FRIEND below): the room server and this tab's place in a room
+const ROOMS_URL = '';            // wss://air-cricket-rooms.<your-subdomain>.workers.dev once server/ is deployed
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const net = {
+  url: (() => { try { return new URLSearchParams(location.search).get('rooms') || ROOMS_URL; } catch (_) { return ROOMS_URL; } })(),
+  ws: null, code: null, mode: 'create', want: false, tries: 0, timer: 0, ping: 0,
+  pid: (() => {                  // one id per tab, so a reload rejoins as the same player
+    let id = null; try { id = sessionStorage.getItem('ac-pid'); } catch (_) {}
+    if (!id) { id = Array.from({ length: 12 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[(Math.random() * 36) | 0]).join(''); try { sessionStorage.setItem('ac-pid', id); } catch (_) {} }
+    return id;
+  })(),
+  host: null, players: [], round: 0, played: 0, match: null,
+  isHost() { return !!this.code && this.host === this.pid; },
+  me() { return this.players.find(p => p.pid === this.pid); },
+};
 function resize() {
   pause.drawn = false;
   const w = stage.clientWidth || window.innerWidth, h = stage.clientHeight || window.innerHeight;
@@ -2792,6 +2861,21 @@ function updateHUD() {
     el.className = x ? 'bx' : s === 'W' ? 'bw' : s === 4 ? 'b4' : s === 6 ? 'b6' : s === 0 ? 'b0' : '';
     strip.appendChild(el);
   });
+  renderRivals();
+}
+function renderRivals() {
+  const box = $('rivals'), on = match.kind === 'online' && phase !== 'menu';
+  box.hidden = !on || net.players.length < 2;
+  if (box.hidden) return;
+  box.textContent = '';
+  net.players.filter(p => p.pid !== net.pid).forEach(p => {
+    const row = document.createElement('div'), nm = document.createElement('span'), sc = document.createElement('b'), st = document.createElement('span');
+    row.className = 'rv' + (p.online ? '' : ' away');
+    nm.className = 'nm'; nm.textContent = p.name;
+    sc.textContent = `${p.runs}/${p.wkts}`;
+    st.textContent = !p.online ? 'away' : p.done ? (p.res === 'won' ? 'won' : 'done') : oversText(p.balls);
+    row.append(nm, sc, st); box.appendChild(row);
+  });
 }
 function strikeRate() { return state.faced ? Math.round(state.batRuns / state.faced * 100) : 0; }
 function updateChips() {
@@ -2997,6 +3081,7 @@ function finishBall(runs, wicket, headline, sub, cls, wide) {
   callout(headline, sub, cls);
   showDeliveryInfo();
   updateHUD();
+  if (match.kind === 'online') netSendScore('ball', mark);
   phase = 'post'; postUntil = gnow() + (runs >= 4 || wicket ? 2.4 : 1.9);
   if (runPlan) postUntil = Math.max(postUntil, runPlan.start + runPlan.n * runPlan.dur + 0.8);
   if (event && (event.type === 'field' || event.type === 'drop') && event.f && event.f.actor)
@@ -3064,8 +3149,14 @@ function recordResult(res) {
   saveRecords(rec);
   return rec;
 }
+// the address to send to someone else: the page itself when it's on the web, the GitHub Pages copy when it
+// isn't (the Android app runs from https://localhost, a preview from claude.ai, a test from a local server)
+function publicUrl() {
+  return /^https?:/.test(location.protocol) && !/claude\.ai|claudeusercontent|^localhost$|^127\./.test(location.hostname)
+    ? location.origin + location.pathname : 'https://dhruwayush.github.io/air-cricket/';
+}
 function shareText(r) {
-  const url = /^https?:/.test(location.protocol) && !/claude\.ai|claudeusercontent/.test(location.host) ? location.origin + location.pathname : 'https://dhruwayush.github.io/air-cricket/';
+  const url = publicUrl();
   // group by over: six legal balls, with wides and no balls shown where they came
   const overs = []; let cur = [], legal = 0;
   for (const x of r.log.split(' ').filter(Boolean)) {
@@ -3120,9 +3211,15 @@ function showEnd(res) {
     note.hidden = false; note.textContent = `Chase code ${m.code}. Random chases won on this device: ${r.won} of ${r.played}.`;
     btn('New target', () => startInnings(makeMatch('random')), true);
     btn(`Replay ${m.code}`, () => startInnings(makeMatch('random', { code: m.code })));
+  } else if (m.kind === 'online') {
+    netSendScore('done', null, res);
+    if (net.isHost()) btn('New match', () => netStart(), true);
+    else { note.hidden = false; note.textContent = 'The host can start a new match for everyone.'; }
+    btn('Leave room', () => { netLeave(); phase = 'over'; openMenu(false); });
   } else btn('Bat again', () => startInnings(makeMatch(m.kind)), true);
   btn('Change settings', () => { phase = 'over'; openMenu(false); });
   $('end').hidden = false;
+  renderH2H();
   setTimeout(() => acts.firstChild && acts.firstChild.focus(), 50);
 }
 /* the mode picker explains the selected mode, including today's daily and how you did */
@@ -3138,12 +3235,18 @@ function syncModeInfo() {
     info.innerHTML = `<span class="tag">Daily #${d.num}</span> Everyone faces the same balls today. <b>${matchTerms(d)}</b>. Level is fixed at Pro. `
       + (today ? `Your result: <b>${today.runs}/${today.wkts}${today.won ? ', won' : today.tie ? ', tied' : ', short'}</b>; play again for practice.` : 'Your first go counts.')
       + (streak ? ` Winning streak: <b>${plural(streak, 'day')}</b>.` : '');
+  } else if (kind === 'online') {
+    info.innerHTML = net.url
+      ? 'Up to four of you face <b>the same balls</b> in a chase the room picks, at the host\u2019s level, and see each other\u2019s score after every ball. Create a room and send the code, or join with a friend\u2019s code.'
+      : 'Online play needs the room server. It isn\u2019t switched on in this build yet.';
   } else info.innerHTML = {
     chase: '<b>36 to win off 2 overs</b> with 3 wickets. An over of pace, then an over of spin.',
     random: 'A <b>new target every time</b>, from a one-over dash to a four-over chase, against pace, spin or both. Each one has a code you can replay.',
     super: '<b>One over, two wickets</b> against a death bowler: yorkers, bouncers and slower balls. Tie it and you go again.',
     nets: '<b>No target.</b> Face pace and spin and try your shots.',
   }[kind];
+  $('online').hidden = kind !== 'online' || !net.url;
+  syncStartBtn();
 }
 document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener('change', syncModeInfo));
 
@@ -3157,7 +3260,7 @@ function openMenu(midGame) {
   rb.classList.toggle('primary', pause.on); sb.classList.toggle('primary', !pause.on);
   eb.dataset.text = eb.dataset.text || eb.textContent;
   eb.textContent = pause.on ? `Paused · ${state.runs}/${state.wkts} · ${$('overs').textContent} overs` : eb.dataset.text;
-  if (pause.on) sb.textContent = 'New game'; else syncCamSettings();
+  syncStartBtn();
   $('end').hidden = true; $('menu').hidden = false;
   syncModeInfo();
   setTimeout(() => (pause.on ? rb : sb).focus(), 30);
@@ -3199,7 +3302,17 @@ async function beginCamera() {
 function syncCamSettings() {
   const on = document.querySelector('input[name="ctrl"]:checked').value !== 'keys';
   $('cam-settings').hidden = !on;
-  $('btn-start').textContent = on ? 'Set up camera' : 'Take guard';
+  syncStartBtn(on);
+}
+function syncStartBtn(camOn) {
+  const sb = $('btn-start'), mode = document.querySelector('input[name="mode"]:checked').value;
+  if (camOn == null) camOn = document.querySelector('input[name="ctrl"]:checked').value !== 'keys';
+  sb.disabled = false;
+  if (mode === 'online') {
+    const ready = net.code && net.players.filter(p => p.online).length >= 2;
+    sb.textContent = !net.code ? 'Join a room first' : !net.isHost() ? 'The host starts' : net.round ? 'New match' : 'Start match';
+    sb.disabled = !net.isHost() || !ready;
+  } else sb.textContent = pause.on ? 'New game' : camOn ? 'Set up camera' : 'Take guard';
 }
 document.querySelectorAll('input[name="ctrl"]').forEach(r => r.addEventListener('change', () => { $('cam-err').hidden = true; syncCamSettings(); }));
 $('sens').addEventListener('input', e => { cam.cfg.sens = +e.target.value; $('sens-out').textContent = e.target.value; });
@@ -3214,6 +3327,7 @@ $('btn-recentre').addEventListener('click', e => { e.currentTarget.blur(); cam.r
 
 $('btn-start').addEventListener('click', () => {
   endPause(); sound.unlock(); readSettings();
+  if (state.mode === 'online') { netStart(); return; }   // the match begins for everyone when the room says go
   if (state.ctrl === 'keys') { cam.stop(); startInnings(); }
   else beginCamera();
 });
@@ -3237,6 +3351,167 @@ $('btn-menu').addEventListener('click', e => { e.currentTarget.blur(); openMenu(
 function syncSoundBtn() { const b = $('btn-sound'); b.textContent = sound.enabled ? 'Sound' : 'Muted'; b.setAttribute('aria-pressed', String(sound.enabled)); b.setAttribute('aria-label', sound.enabled ? 'Sound on, tap to mute' : 'Sound muted, tap to turn on'); }
 $('btn-sound').addEventListener('click', e => { e.currentTarget.blur(); sound.unlock(); sound.setEnabled(!sound.enabled); syncSoundBtn(); });
 syncSoundBtn();
+
+/* ============================================================
+   PLAY A FRIEND
+   Up to four phones in a room. The host starts a match, the room hands everyone the same chase code and
+   level, and each phone plays its own innings against the same balls, sending its score after every ball.
+   The room itself is a small Cloudflare Worker (server/ in the repo).
+   ============================================================ */
+const NET_ERRORS = {
+  'no-room': 'No room with that code. Check it with your friend.',
+  full: 'That room is full: four players already.',
+  alone: 'Wait for a friend to join first.',
+  'bad-hello': 'Couldn’t join. Try again.',
+};
+function netStatus(text, err) { const el = $('net-status'); el.textContent = text || ''; el.classList.toggle('err', !!err); }
+function netName() {
+  const v = $('net-name').value.replace(/[<>]/g, '').trim().slice(0, 16) || 'Player';
+  try { localStorage.setItem('ac-name', v); } catch (_) {}
+  return v;
+}
+function netConnect() {
+  clearTimeout(net.timer);
+  if (net.ws) { net.ws.onclose = null; try { net.ws.close(); } catch (_) {} }
+  let ws;
+  try { ws = new WebSocket(`${net.url.replace(/\/$/, '')}/room/${net.code}`); }
+  catch (_) { netStatus('Couldn’t reach the room server.', true); return; }
+  net.ws = ws;
+  ws.onopen = () => {
+    net.tries = 0;
+    ws.send(JSON.stringify({ t: 'hello', pid: net.pid, name: netName(), mode: net.mode }));
+    net.mode = 'join';                                   // once in, a reconnect is a rejoin
+    clearInterval(net.ping); net.ping = setInterval(() => { try { ws.send('ping'); } catch (_) {} }, 25000);
+  };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (_) { return; } netMessage(m); };
+  ws.onclose = () => {
+    clearInterval(net.ping);
+    if (!net.want) return;
+    net.tries++;
+    netStatus('Connection lost. Reconnecting…', true);
+    net.timer = setTimeout(netConnect, Math.min(8000, 400 * 2 ** net.tries));
+  };
+}
+function netEnter(code, mode) {
+  if (!net.url) return;
+  net.code = code; net.mode = mode; net.want = true; net.tries = 0; net.round = 0; net.played = 0; net.players = []; net.host = null;
+  netStatus(mode === 'create' ? 'Opening a room…' : 'Joining…');
+  netConnect();
+}
+function netCreate() { netEnter(Array.from({ length: 4 }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join(''), 'create'); }
+function netJoin() {
+  const code = $('net-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-HJ-NP-Z2-9]{4}$/.test(code)) { netStatus('Room codes are four letters and numbers.', true); return; }
+  netEnter(code, 'join');
+}
+function netLeave() {
+  if (net.ws && net.ws.readyState === 1) try { net.ws.send(JSON.stringify({ t: 'leave' })); } catch (_) {}
+  net.want = false; clearTimeout(net.timer); clearInterval(net.ping);
+  const ws = net.ws; net.ws = null; if (ws) setTimeout(() => { try { ws.close(); } catch (_) {} }, 200);
+  Object.assign(net, { code: null, host: null, players: [], round: 0, match: null });
+  netStatus(''); renderRoom(); renderRivals();
+}
+function netSend(msg) { if (net.ws && net.ws.readyState === 1) try { net.ws.send(JSON.stringify(msg)); } catch (_) {} }
+function netStart() {
+  if (!net.isHost()) return;
+  readSettings();
+  netSend({ t: 'start', level: state.level });
+  netStatus('Starting…');
+}
+// your score after each ball, and when the innings is over
+function netSendScore(t, mark, res) {
+  if (match.kind !== 'online' || match.round !== net.played) return;
+  const msg = { t, round: match.round, runs: state.runs, wkts: state.wkts, balls: state.balls };
+  if (t === 'ball') msg.mark = mark; else msg.res = res;
+  const me = net.me(); if (me) Object.assign(me, { runs: msg.runs, wkts: msg.wkts, balls: msg.balls }, t === 'done' ? { done: true, res } : {});
+  netSend(msg);
+}
+function netMessage(m) {
+  if (m.t === 'roster') {
+    Object.assign(net, { host: m.host, players: m.players, round: m.round, match: m.match ? { ...m.match, round: m.round } : null });
+    netStatus(net.players.length < 2 ? 'Send the code to a friend. The match starts when the host presses Start.' : net.isHost() ? 'Press Start match when everyone’s here.' : 'Waiting for the host to start.');
+  } else if (m.t === 'start') {
+    net.match = { code: m.code, level: m.level, round: m.round };
+    if (m.round > net.round) net.players.forEach(p => Object.assign(p, { runs: 0, wkts: 0, balls: 0, done: false, res: null }));
+    net.round = m.round;
+    if (m.round > net.played) {                          // a match you haven't played yet: everyone goes now
+      net.played = m.round; netStatus('');
+      endPause(); $('end').hidden = true; $('menu').hidden = true;
+      readSettings(); $('mode-online').checked = true; state.mode = 'online';
+      if (state.ctrl === 'keys') { cam.stop(); startInnings(makeMatch('online', net.match)); } else beginCamera();
+    }
+  } else if (m.t === 'ball' || m.t === 'done') {
+    const p = net.players.find(x => x.pid === m.pid);
+    if (p && m.round === net.round) Object.assign(p, { runs: m.runs, wkts: m.wkts, balls: m.balls }, m.t === 'done' ? { done: true, res: m.res } : {});
+  } else if (m.t === 'error') {
+    if (m.why === 'taken' && net.mode === 'create') { netCreate(); return; }   // someone already has that code: pick another
+    if (m.why === 'not-host' || m.why === 'alone') { netStatus(NET_ERRORS[m.why] || '', true); return; }
+    net.want = false;
+    Object.assign(net, { code: null, players: [], host: null });
+    netStatus(NET_ERRORS[m.why] || 'Couldn’t join that room.', true);
+  }
+  renderRoom(); renderRivals(); renderH2H();
+}
+function renderRoom() {
+  const inRoom = !!net.code && net.players.length > 0;
+  $('net-lobby').hidden = inRoom; $('net-room-box').hidden = !inRoom;
+  if (inRoom) {
+    $('net-room').textContent = net.code;
+    const ul = $('net-roster'); ul.textContent = '';
+    net.players.forEach(p => {
+      const li = document.createElement('li'), who = document.createElement('span'), st = document.createElement('span');
+      who.className = 'who'; st.className = 'st';
+      who.append(document.createTextNode(p.name + (p.pid === net.pid ? ' (you)' : '')));
+      if (p.pid === net.host) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = 'host'; who.appendChild(b); }
+      if (!p.online) li.className = 'away';
+      st.textContent = !p.online ? 'away' : net.round ? (p.done ? `${p.runs}/${p.wkts} · done` : `${p.runs}/${p.wkts} · ${oversText(p.balls)}`) : 'ready';
+      li.append(who, st); ul.appendChild(li);
+    });
+  }
+  syncStartBtn();
+}
+// head to head on the end screen: a chase won sooner beats one won later, then the most runs, then fewer wickets
+function netRank(p) { const won = match.target != null && p.runs >= match.target; return won ? [0, p.balls, p.wkts] : [1, -p.runs, p.wkts]; }
+function netCompare(a, b) { const x = netRank(a), y = netRank(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; }
+function renderH2H() {
+  const box = $('end-h2h');
+  box.hidden = $('end').hidden || match.kind !== 'online' || net.players.length < 2;
+  if (box.hidden) return;
+  box.textContent = '';
+  const ps = net.players.slice().sort(netCompare), waiting = ps.filter(p => !p.done);
+  const verdict = document.createElement('div'); verdict.className = 'verdict';
+  if (waiting.length) verdict.textContent = `Waiting for ${waiting.map(p => p.name).join(', ')}…`;
+  else {
+    const top = ps.filter(p => netCompare(p, ps[0]) === 0);
+    verdict.textContent = top.length > 1 ? `Tied: ${top.map(p => p.pid === net.pid ? 'you' : p.name).join(' and ')}` : top[0].pid === net.pid ? 'You win!' : `${top[0].name} wins`;
+  }
+  box.appendChild(verdict);
+  ps.forEach(p => {
+    const row = document.createElement('div'), nm = document.createElement('span'), sc = document.createElement('span'), b = document.createElement('b');
+    row.className = 'row' + (p.pid === net.pid ? ' me' : '');
+    nm.textContent = p.name + (p.pid === net.pid ? ' (you)' : '') + (p.online ? '' : ' · away');
+    b.textContent = `${p.runs}/${p.wkts}`;
+    sc.append(b, document.createTextNode(` · ${oversText(p.balls)}${p.done ? '' : ' · batting'}`));
+    row.append(nm, sc); box.appendChild(row);
+  });
+}
+$('net-create').addEventListener('click', () => { sound.unlock(); netCreate(); });
+$('net-join').addEventListener('click', () => { sound.unlock(); netJoin(); });
+$('net-code').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); netJoin(); } });
+$('net-leave').addEventListener('click', () => netLeave());
+$('net-invite').addEventListener('click', e => {
+  const base = publicUrl();
+  const extra = net.url !== ROOMS_URL ? `&rooms=${encodeURIComponent(net.url)}` : '';
+  shareResult(e.currentTarget, `Bat against me in Air Cricket: room ${net.code}\n${base}?room=${net.code}${extra}`);
+});
+try { $('net-name').value = localStorage.getItem('ac-name') || ''; } catch (_) {}
+// no room server set up in this build: keep the mode out of the picker
+if (!net.url) { $('mode-online').hidden = true; document.querySelector('label[for="mode-online"]').hidden = true; }
+// an invite link (?room=CODE) opens the room straight away
+{
+  let code = null; try { code = (new URLSearchParams(location.search).get('room') || '').toUpperCase(); } catch (_) {}
+  if (code && net.url) { $('mode-online').checked = true; syncModeInfo(); $('net-code').value = code; netJoin(); }
+}
 
 
 /* ============================================================

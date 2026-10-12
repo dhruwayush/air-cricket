@@ -20,6 +20,9 @@ Aim with the arrow keys. The length of the ball decides front foot or back foot,
 | `A` / `D` | Step across the crease |
 | `M` | Show or hide the field map |
 | `C` | Recentre camera tracking |
+| `Esc` | Pause, and again to carry on |
+
+**Pause** with `Esc` or the Menu button: the game freezes where it is, even with the ball in the air, and **Resume** (or `Esc`, or `Space`/`Enter`) carries on from that exact moment. Switching to another app or tab pauses it too. **New game** from the pause menu starts over.
 
 Leave a bouncer and the batsman ducks under it. On touch screens the pad has the same 8 directions plus Loft, Sweep, Rev and Scoop.
 

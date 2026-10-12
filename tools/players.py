@@ -406,9 +406,9 @@ def torso(kind, shirt, trousers, belt, panel):
         (0.84, 0.124, 0.09, 0.006), (0.88, 0.157, 0.103, 0.006), (0.94, 0.168, 0.108, 0.006),
         (0.995, 0.164, 0.104, 0.004), (1.035, 0.159, 0.101, 0.002), (1.09, 0.150, 0.099, 0.0),
         (1.15, 0.155, 0.103, -0.003), (1.22, 0.169, 0.110, -0.006), (1.29, 0.183, 0.116, -0.007),
-        (1.35, 0.192, 0.116, -0.004), (1.395, 0.188, 0.111, 0.0), (1.42, 0.172, 0.104, 0.004),
-        (1.44, 0.148, 0.095, 0.006), (1.46, 0.124, 0.084, 0.008), (1.48, 0.09, 0.07, 0.008), (1.5, 0.062, 0.058, 0.008),
-    ]
+        (1.35, 0.192, 0.116, -0.004), (1.40, 0.198, 0.112, 0.0), (1.435, 0.196, 0.104, 0.004),
+        (1.465, 0.178, 0.093, 0.006), (1.49, 0.138, 0.08, 0.008), (1.508, 0.096, 0.068, 0.008), (1.522, 0.064, 0.058, 0.008),
+    ]   # the top rings run the shoulder line up into the neck, so the shoulders slope instead of sitting square
     pts = [(0, yo, z) for z, _, _, yo in sections]
     prof = [(rx, ry) for _, rx, ry, _ in sections]
 
@@ -447,11 +447,14 @@ def arm(kind, s, sx, sleeve, cuff, skin, long_sleeve):
     def add(p, r, w, m):
         rows.append((Vector(p), r, w, m))
 
-    top = S + Vector((-0.05 * sx, 0.0, -0.005))
-    add(top, (0.042, 0.05), {"chest": 0.6, "upper_arm." + s: 0.4}, sleeve)
+    # the shoulder is a dome centred on the joint itself: a ball turning about its own centre stays put, so the
+    # shoulder keeps its round shape in every pose instead of folding where separate pieces meet
     loose = 0.005
+    for ang in (78, 58, 38, 18):
+        c, sn = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+        add(S + Vector((0, 0, 0.052 * sn)), ((0.05 + loose) * c, (0.055 + loose) * c), {"upper_arm." + s: 1.0}, sleeve)
     for u, rs, rf in ((0.0, 0.05, 0.055), (0.12, 0.051, 0.055), (0.3, 0.049, 0.053), (0.5, 0.046, 0.049)):
-        w = {"chest": 0.3, "upper_arm." + s: 0.7} if u == 0 else {"upper_arm." + s: 1.0}
+        w = {"upper_arm." + s: 1.0}
         add(lerpv(S, E, u), (rs + loose, rf + loose), w, sleeve)
     if not long_sleeve:   # short sleeve: hem, then bare arm
         add(lerpv(S, E, 0.56), (0.047 + loose + 0.003, 0.05 + loose + 0.003), {"upper_arm." + s: 1.0}, sleeve)
@@ -535,7 +538,7 @@ def head_parts(skin, eye, hair, with_hair):
     parts.append(ellipsoid((0, 0.006, 1.69), (0.085, 0.098, 0.11), skin, "head", seg=24, rings=16))   # skull
     parts.append(ellipsoid((0, -0.03, 1.628), (0.068, 0.072, 0.058), skin, "head", seg=18, rings=12))  # jaw
     parts.append(ellipsoid((0, -0.074, 1.597), (0.03, 0.024, 0.024), skin, "head", seg=10, rings=8))  # chin
-    parts.append(ellipsoid((0, -0.1, 1.668), (0.016, 0.022, 0.028), skin, "head", seg=10, rings=8, rot=(0.25, 0, 0)))  # nose
+    parts.append(ellipsoid((0, -0.097, 1.668), (0.012, 0.019, 0.027), skin, "head", seg=12, rings=8, rot=(0.3, 0, 0)))  # nose
     for x in (0.087, -0.087):
         parts.append(ellipsoid((x, 0.004, 1.68), (0.012, 0.026, 0.032), skin, "head", seg=10, rings=8))   # ears
         parts.append(ellipsoid((x * 0.38, -0.088, 1.7), (0.012, 0.006, 0.007), eye, "head", seg=8, rings=6))  # eyes
@@ -558,7 +561,7 @@ def neck_and_collar(kind, skin, collar):
     n = tube(kind + "_neck", [(0, 0.012, 1.44), (0, 0.008, 1.52), (0, 0.004, 1.6)], [(0.054, 0.05), (0.05, 0.047), (0.048, 0.046)],
              lambda i, a: skin, lambda i: [{"chest": 0.6, "neck": 0.4}, {"neck": 1.0}, {"neck": 0.6, "head": 0.4}][i], n=14, up=(0, -1, 0))
     bpy.ops.mesh.primitive_torus_add(major_radius=0.064, minor_radius=0.012, major_segments=28, minor_segments=8,
-                                     location=(0, 0.004, 1.478), rotation=(-0.18, 0, 0))
+                                     location=(0, 0.006, 1.51), rotation=(-0.18, 0, 0))
     c = bpy.context.active_object
     c.scale = (1.0, 0.86, 1.0)
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
@@ -800,10 +803,15 @@ def bat_parts(willow, grip, label, label2):
 
 
 def cap_parts(cap, button):
-    c = ellipsoid((0, 0.006, 1.712), (0.094, 0.106, 0.112), cap, "head", seg=24, rings=14)
-    cut_below(c, 1.698)
-    parts = [c, ellipsoid((0, 0.0, 1.823), (0.011, 0.011, 0.007), button, "head", seg=8, rings=4)]
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=8, radius=1, location=(0, -0.07, 1.708))
+    c = ellipsoid((0, 0.008, 1.722), (0.095, 0.108, 0.114), cap, "head", seg=24, rings=14)
+    bm = bmesh.new()
+    bm.from_mesh(c.data)
+    W = lambda v: c.matrix_world @ v.co
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if W(v).z < 1.716 - 0.22 * W(v).y], context="VERTS")   # brow at the front, lower behind
+    bm.to_mesh(c.data)
+    bm.free()
+    parts = [c, ellipsoid((0, 0.004, 1.835), (0.011, 0.011, 0.007), button, "head", seg=8, rings=4)]
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=8, radius=1, location=(0, -0.072, 1.736))
     b = bpy.context.active_object
     b.scale = (0.088, 0.1, 0.011)
     b.rotation_euler = (0.12, 0, 0)
@@ -902,8 +910,6 @@ def build_body(kind):
     parts += neck_and_collar(kind, skin, trim)
     parts += head_parts(skin, eye, hair, with_hair=not bat)
     for s, sx in (("L", 1), ("R", -1)):
-        parts.append(weighted(ellipsoid(JP("shoulder." + s) + Vector((-0.016 * sx, 0.0, -0.02)), (0.052, 0.058, 0.062), shirt, "chest", seg=16, rings=10),
-                              {"chest": 0.3, "upper_arm." + s: 0.7}))
         parts.append(arm(kind, s, sx, shirt, trim, skin, long_sleeve=bat))
         parts.append(leg(kind, s, sx, trousers, None if bat else trim))
         parts += shoe(s, sx, shoe_up, sole, accent)

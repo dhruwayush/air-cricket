@@ -129,6 +129,8 @@ legend{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:upperc
 .seg input:checked + label{background:var(--led);color:var(--led-ink);border-color:transparent}
 .seg input:focus-visible + label{outline:2px solid var(--chalk);outline-offset:2px}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
+/* the menu's buttons stay in reach while its settings scroll, so Resume is never at the bottom of a long page */
+#menu .actions{position:sticky;bottom:-22px;margin:0 -24px -22px;padding:14px 24px 22px;background:linear-gradient(rgba(11,29,35,0),#0b1d23 14px);border-radius:0 0 10px 10px}
 .btn{font:700 16px/1 var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:14px 20px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--chalk);cursor:pointer}
 .btn.primary{background:var(--led);color:var(--led-ink);border-color:transparent}
 .btn:focus-visible,.menu-btn:focus-visible{outline:2px solid var(--chalk);outline-offset:2px}
@@ -462,7 +464,10 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 1200);
    so the view's centre is lifted and the field of view set for that free area (about 27° across in
    portrait, never under 36° tall). */
 const view = { padOn: false, bottom: 0 };
+// pause: the menu freezes a ball in play where it is, and Resume carries on from that moment
+const pause = { on: false, drawn: false, wall: 0 };
 function resize() {
+  pause.drawn = false;
   const w = stage.clientWidth || window.innerWidth, h = stage.clientHeight || window.innerHeight;
   renderer.setSize(w, h, false);
   const pad = document.getElementById('pad');
@@ -2099,7 +2104,7 @@ function toBatter(code) {
 }
 function requestShot(code, opts) {
   opts = opts || {};
-  if (phase !== 'delivery' || swing) return false;
+  if (phase !== 'delivery' || swing || pause.on) return false;
   const now = gnow();
   const td = now - relWall;
   const cd = opts.contactDelay != null ? opts.contactDelay : CONTACT_DELAY;
@@ -2125,7 +2130,7 @@ function refineShot(code, family) {
   if (next !== swing.shot) { swing.shot = next; swing.dir = side === 'B' ? 'block' : 'shot'; playShot(swing, true); }
   return true;
 }
-function canStep() { return phase === 'runup' || (phase === 'delivery' && !swing); }
+function canStep() { return !pause.on && (phase === 'runup' || (phase === 'delivery' && !swing)); }
 function requestStep(d) {
   if (!canStep()) return;
   state.foot = clamp(state.foot + d, -1, 1);
@@ -2162,6 +2167,7 @@ function shotKey(part, family) {
 }
 window.addEventListener('keydown', e => {
   if (e.key === 'Shift') { input.loftHeld = true; updateChips(); }
+  if (pause.on) { if (e.code === 'Escape') { e.preventDefault(); resumeGame(); } return; }
   if (phase === 'menu' || phase === 'over') return;
   if (ARROWS[e.code]) { e.preventDefault(); if (!e.repeat) shotKey(ARROWS[e.code], null); }
   else if (FAMILY_KEYS[e.code]) { e.preventDefault(); if (!e.repeat) shotKey(null, FAMILY_KEYS[e.code]); }
@@ -2233,7 +2239,7 @@ const sound = (() => {
   }
 
   function unlock() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    if (ctx) { if (ctx.state === 'suspended' && !pause.on && !document.hidden) ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     try {
       ctx = new AC();
@@ -2344,6 +2350,9 @@ const sound = (() => {
   const ok = () => ctx && enabled;
   return {
     unlock, setEnabled, get enabled() { return enabled; },
+    // everything stops for a pause: crowd, effects, commentary clips and the device's speech voice
+    suspend() { if (ctx && ctx.state === 'running') ctx.suspend(); if (window.speechSynthesis) try { speechSynthesis.pause(); } catch (_) {} },
+    resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); if (window.speechSynthesis) try { speechSynthesis.resume(); } catch (_) {} },
     get ctx() { return ctx; }, get voiceBus() { return voiceBus; },
     // the crowd drops back while someone is talking, then swells again
     duck(sec) { if (!ctx || !crowdBus) return; const t = T(); crowdBus.gain.cancelScheduledValues(t); crowdBus.gain.setTargetAtTime(0.24, t, 0.06); crowdBus.gain.setTargetAtTime(0.5, t + sec, 0.35); },
@@ -2497,6 +2506,7 @@ const commentary = (() => {
     if (o.chance != null && Math.random() > o.chance) return;
     const group = groupOf(key), id = choose(group, key); if (!id) return;
     const pri = o.pri || 1, go = () => {
+      if (pause.on) return;
       if (now() < busyUntil - 0.1 && pri <= busyPri) return;
       speakNow(group, id, pri);
     };
@@ -3138,12 +3148,19 @@ function syncModeInfo() {
 document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener('change', syncModeInfo));
 
 function openMenu(midGame) {
-  if (phase === 'menu') return;
-  phase = 'menu';
-  $('btn-resume').hidden = !midGame || state.balls === 0 && !del;
+  if (phase === 'menu' || pause.on) return;
+  if (midGame && phase !== 'over') { pause.on = true; pause.drawn = false; pause.wall = performance.now() / 1000; sound.suspend(); }
+  else phase = 'menu';
+  // paused: Resume leads and takes focus (so Space or Enter carries on), and starting over is a plain "New game"
+  const rb = $('btn-resume'), sb = $('btn-start'), eb = document.querySelector('#menu .eyebrow');
+  rb.hidden = !pause.on; rb.style.order = pause.on ? -1 : 0;
+  rb.classList.toggle('primary', pause.on); sb.classList.toggle('primary', !pause.on);
+  eb.dataset.text = eb.dataset.text || eb.textContent;
+  eb.textContent = pause.on ? `Paused · ${state.runs}/${state.wkts} · ${$('overs').textContent} overs` : eb.dataset.text;
+  if (pause.on) sb.textContent = 'New game'; else syncCamSettings();
   $('end').hidden = true; $('menu').hidden = false;
   syncModeInfo();
-  setTimeout(() => $('btn-start').focus(), 30);
+  setTimeout(() => (pause.on ? rb : sb).focus(), 30);
 }
 
 const CAM_ERRORS = {
@@ -3196,14 +3213,25 @@ $('btn-calib-back').addEventListener('click', () => { cam.cancel(); $('calib').h
 $('btn-recentre').addEventListener('click', e => { e.currentTarget.blur(); cam.recentre(); });
 
 $('btn-start').addEventListener('click', () => {
-  sound.unlock(); readSettings();
+  endPause(); sound.unlock(); readSettings();
   if (state.ctrl === 'keys') { cam.stop(); startInnings(); }
   else beginCamera();
 });
-$('btn-resume').addEventListener('click', () => {
-  sound.unlock(); $('menu').hidden = true;
+function resumeGame() {
+  if (!pause.on) return;
+  const d = performance.now() / 1000 - pause.wall;
+  fx.stopUntil += d; fx.slowUntil += d;            // a hit-stop or slow-motion moment picks up where it was
+  pause.on = false; sound.resume();
+  $('menu').hidden = true; $('cam-err').hidden = true;
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  nextBall();
+}
+// starting something else from the pause menu drops the paused ball
+function endPause() { if (pause.on) { pause.on = false; sound.resume(); } }
+$('btn-resume').addEventListener('click', resumeGame);
+// leaving the app or switching tabs pauses a ball in play and quietens the crowd until you come back
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (phase !== 'menu' && phase !== 'over') openMenu(true); sound.suspend(); }
+  else if (!pause.on) sound.resume();
 });
 $('btn-menu').addEventListener('click', e => { e.currentTarget.blur(); openMenu(true); });
 function syncSoundBtn() { const b = $('btn-sound'); b.textContent = sound.enabled ? 'Sound' : 'Muted'; b.setAttribute('aria-pressed', String(sound.enabled)); b.setAttribute('aria-label', sound.enabled ? 'Sound on, tap to mute' : 'Sound muted, tap to turn on'); }
@@ -3346,6 +3374,7 @@ let setT = 0, setDur = 0, audioStep = -1, audioBed = -1;
 function tick(ms) {
   const wall = ms / 1000;
   const rawDt = wall - (lastWall || wall), wallDt = Math.min(0.05, rawDt); lastWall = wall;
+  if (pause.on) { if (!pause.drawn) { renderer.render(scene, camera); pause.drawn = true; } requestAnimationFrame(tick); return; }
   if (phase === 'runup' || phase === 'delivery' || phase === 'hit') sampleGfx(rawDt);
   fx.scale = timeScaleAt(wall);
   const dt = wallDt * fx.scale;

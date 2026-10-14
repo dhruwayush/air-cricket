@@ -41,6 +41,7 @@ input:focus{outline:2px solid var(--led);outline-offset:2px}
 .btn:disabled{opacity:.5}
 .status{margin:0;font-family:var(--f-display);font-weight:800;font-size:30px;line-height:1.05;text-transform:uppercase}
 .status.bad{color:var(--wicket)}
+.detail{margin:-6px 0 0;font-size:14px;color:var(--muted);overflow-wrap:anywhere}
 .status.good{color:var(--four)}
 .shot{margin:0;min-height:1.2em;font-family:var(--f-display);font-weight:900;font-size:clamp(40px,12vw,56px);line-height:1;text-transform:uppercase;color:var(--led)}
 .note{margin:auto 0 0;font-size:14px;color:var(--muted)}
@@ -60,6 +61,7 @@ input:focus{outline:2px solid var(--led);outline-offset:2px}
     <button class="btn primary" id="go" type="submit">Connect</button>
   </form>
   <p class="status" id="status" aria-live="polite"></p>
+  <p class="detail" id="detail" hidden></p>
   <p class="shot" id="shot" aria-live="polite"></p>
   <div class="row" id="pad" hidden>
     <button class="btn" type="button" data-step="-1">◀ Step</button>
@@ -119,9 +121,11 @@ function cleanup() {
   if (ws) try { ws.onclose = null; ws.close(); } catch (_) {}
   ws = null; pc = null; dc = null; described = false; queued = [];
 }
-function failed(text) {
+// detail: the technical reason in small print, so a screenshot says exactly where it stopped
+function failed(text, detail) {
   cleanup();
   say(text, 'bad');
+  $('detail').textContent = detail || ''; $('detail').hidden = !detail;
   $('join').hidden = false; $('go').disabled = false; $('go').textContent = 'Try again';
   $('recentre').hidden = true; $('pad').hidden = true;
 }
@@ -132,17 +136,20 @@ function connect(code) {
   const id = 'aircricket-bat-' + Math.random().toString(36).slice(2, 10), token = Math.random().toString(36).slice(2);
   const OFFLINE = 'Couldn’t reach the pairing service. Check your internet connection.';
   // each step says where it got to, so a failure says which step it was
-  const waitFor = (ms, text) => { clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (!dc) failed(text); }, ms); };
+  let opened = false;
+  const waitFor = (ms, text, detail) => { clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (!dc) failed(text, detail); }, ms); };
   say('Reaching the pairing service…');
+  $('detail').hidden = true;
   $('go').disabled = true;
-  waitFor(12000, OFFLINE);
-  ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}`);
+  waitFor(12000, OFFLINE, `No reply from ${SIG.host} in 12 s`);
+  ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}&version=1.5.5`);
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
     if (m.type === 'OPEN') {
+      opened = true;
       beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000);
       say('Asking the big screen…');
-      waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`);
+      waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`, 'Sent the request; no answer in 12 s');
       offer();
     } else if (m.type === 'ANSWER' && m.src === game && pc) {
       say('The big screen answered · connecting…');
@@ -150,10 +157,10 @@ function connect(code) {
       pc.setRemoteDescription(m.payload.sdp).then(() => { described = true; queued.splice(0).forEach(addCandidate); }).catch(() => failed(NO_LINK));
     } else if (m.type === 'CANDIDATE' && m.src === game) addCandidate(m.payload && m.payload.candidate);
     else if (m.type === 'EXPIRE' || (m.type === 'LEAVE' && m.src === game)) { if (!dc) failed(`No game is waiting with code ${code.toUpperCase()}. Check the code on the big screen.`); }
-    else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') { if (!dc) failed(OFFLINE); }
+    else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') { if (!dc) failed(OFFLINE, `${SIG.host} said: ${m.type === 'ERROR' ? (m.payload && m.payload.msg) || 'error' : 'ID taken'}`); }
   };
-  ws.onerror = () => { if (!dc) failed(OFFLINE); };
-  ws.onclose = () => { if (!dc) failed(OFFLINE); };
+  // an error is always followed by a close, which carries the code
+  ws.onclose = e => { if (!dc) failed(OFFLINE, `${SIG.host} closed the connection ${opened ? 'after it opened' : 'before it opened'} (code ${e.code}${e.reason ? ', ' + e.reason : ''})`); };
 }
 async function offer() {
   const p = pc = new RTCPeerConnection({ iceServers: ICE });

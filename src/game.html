@@ -3072,18 +3072,19 @@ const link = (() => {
   function register(id) {
     return new Promise((res, rej) => {
       const token = Math.random().toString(36).slice(2);
-      const s = ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}`);
-      const timer = setTimeout(() => rej(fail('offline')), 10000);
+      const s = ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}&version=1.5.5`);
+      // why it failed, in small print: a screenshot of it says where pairing stopped
+      const off = detail => Object.assign(fail('offline'), { detail });
+      const timer = setTimeout(() => rej(off(`no reply from ${SIG.host} in 10 s`)), 10000);
       s.onmessage = ev => {
         let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
         if (m.type === 'OPEN') { clearTimeout(timer); beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000); res(); }
         else if (m.type === 'ID-TAKEN') { clearTimeout(timer); rej(fail('taken')); }
-        else if (m.type === 'ERROR') { clearTimeout(timer); rej(fail('offline')); }
+        else if (m.type === 'ERROR') { clearTimeout(timer); rej(off(`${SIG.host} said: ${(m.payload && m.payload.msg) || 'error'}`)); }
         else if (m.type === 'OFFER' && m.payload && m.payload.sdp) answer(m.src, m.payload.sdp);
         else if (m.type === 'CANDIDATE' && m.src === phone && m.payload) addCandidate(m.payload.candidate);
       };
-      s.onerror = () => { clearTimeout(timer); rej(fail('offline')); };
-      s.onclose = () => { clearInterval(beat); };
+      s.onclose = e => { clearTimeout(timer); clearInterval(beat); rej(off(`${SIG.host} closed the connection (code ${e.code})`)); };   // after OPEN this rej does nothing
     });
   }
   async function answer(src, sdp) {
@@ -3760,7 +3761,7 @@ async function beginPairing() {
   } catch (err) {
     if ($('calib').hidden) return;
     $('calib').hidden = true; $('menu').hidden = false;
-    const e = $('cam-err'); e.textContent = MOTION_ERRORS.offline; e.hidden = false;
+    const e = $('cam-err'); e.textContent = MOTION_ERRORS.offline + (err.detail ? ` (${err.detail})` : ''); e.hidden = false;
     phase = 'menu';
     return;
   }

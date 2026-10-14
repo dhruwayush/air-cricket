@@ -130,37 +130,53 @@ function failed(text, detail) {
   $('recentre').hidden = true; $('pad').hidden = true;
 }
 
-function connect(code) {
+// every step of connecting, timed from the tap, shown in small print if it fails (a retry adds to it)
+let t0 = 0, steps = [];
+const mark = s => steps.push(`${s} ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+const timeline = () => steps.join(' · ');
+
+function connect(code, retry) {
   cleanup();
+  if (!retry) { t0 = performance.now(); steps = []; }
   game = 'aircricket-' + code.toLowerCase();
   const id = 'aircricket-bat-' + Math.random().toString(36).slice(2, 10), token = Math.random().toString(36).slice(2);
   const OFFLINE = 'Couldn’t reach the pairing service. Check your internet connection.';
-  // each step says where it got to, so a failure says which step it was
-  let opened = false;
-  const waitFor = (ms, text, detail) => { clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (!dc) failed(text, detail); }, ms); };
-  say('Reaching the pairing service…');
+  let opened = false, answered = false;
+  const waitFor = (ms, text, why) => { clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (!dc) { mark(why); failed(text, timeline()); } }, ms); };
+  say(retry ? 'Lost the pairing service · trying again…' : 'Reaching the pairing service…');
   $('detail').hidden = true;
   $('go').disabled = true;
-  waitFor(12000, OFFLINE, `No reply from ${SIG.host} in 12 s`);
-  ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}&version=1.5.5`);
-  ws.onmessage = ev => {
+  waitFor(12000, OFFLINE, 'no reply');
+  const s = ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}&version=1.5.5`);
+  s.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
     if (m.type === 'OPEN') {
-      opened = true;
+      opened = true; mark('service');
       beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000);
       say('Asking the big screen…');
-      waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`, 'Sent the request; no answer in 12 s');
+      waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`, 'no answer');
       offer();
     } else if (m.type === 'ANSWER' && m.src === game && pc) {
+      answered = true; mark('answered');
       say('The big screen answered · connecting…');
-      waitFor(30000, NO_LINK);
-      pc.setRemoteDescription(m.payload.sdp).then(() => { described = true; queued.splice(0).forEach(addCandidate); }).catch(() => failed(NO_LINK));
+      waitFor(30000, NO_LINK, 'no link');
+      pc.setRemoteDescription(m.payload.sdp).then(() => { described = true; queued.splice(0).forEach(addCandidate); })
+        .catch(() => { mark('bad answer'); failed(NO_LINK, timeline()); });
     } else if (m.type === 'CANDIDATE' && m.src === game) addCandidate(m.payload && m.payload.candidate);
-    else if (m.type === 'EXPIRE' || (m.type === 'LEAVE' && m.src === game)) { if (!dc) failed(`No game is waiting with code ${code.toUpperCase()}. Check the code on the big screen.`); }
-    else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') { if (!dc) failed(OFFLINE, `${SIG.host} said: ${m.type === 'ERROR' ? (m.payload && m.payload.msg) || 'error' : 'ID taken'}`); }
+    else if (m.type === 'EXPIRE' || (m.type === 'LEAVE' && m.src === game)) {
+      if (!dc) { mark(m.type.toLowerCase()); failed(`No game is waiting with code ${code.toUpperCase()}. Check the code on the big screen.`, timeline()); }
+    } else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') {
+      if (!dc) { mark(m.type === 'ERROR' ? `said “${(m.payload && m.payload.msg) || 'error'}”` : 'id taken'); failed(OFFLINE, timeline()); }
+    }
   };
   // an error is always followed by a close, which carries the code
-  ws.onclose = e => { if (!dc) failed(OFFLINE, `${SIG.host} closed the connection ${opened ? 'after it opened' : 'before it opened'} (code ${e.code}${e.reason ? ', ' + e.reason : ''})`); };
+  s.onclose = e => {
+    if (ws !== s || dc) return;
+    mark(`closed ${e.code}`); clearInterval(beat);
+    if (answered) return;                                  // the big screen has answered: the link can finish without the service
+    if (opened && !retry) { connect(code, true); return; } // dropped before the answer: ask once more on a fresh connection
+    failed(OFFLINE, `${SIG.host}: ${timeline()}`);
+  };
 }
 async function offer() {
   const p = pc = new RTCPeerConnection({ iceServers: ICE });
@@ -178,7 +194,7 @@ async function offer() {
   c.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (_) { return; } onData(m); };
   c.onclose = () => { if (dc === c) failed('Disconnected from the big screen. Tap Try again to rejoin.'); };
   p.onicecandidate = e => { if (e.candidate) sig({ type: 'CANDIDATE', dst: game, payload: { candidate: e.candidate.toJSON() } }); };
-  p.onconnectionstatechange = () => { if (p === pc && p.connectionState === 'failed') failed(NO_LINK); };
+  p.onconnectionstatechange = () => { if (p === pc && p.connectionState === 'failed') { mark('link failed'); failed(NO_LINK, timeline()); } };
   try {
     await p.setLocalDescription(await p.createOffer());
     sig({ type: 'OFFER', dst: game, payload: { sdp: p.localDescription.toJSON() } });

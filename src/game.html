@@ -3043,7 +3043,7 @@ const link = (() => {
   const ICE = [{ urls: 'stun:stun.l.google.com:19302' },
     { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
   let ws = null, beat = 0, pc = null, dc = null, phone = null, code = '', listener = () => {};
-  let syncs = [], offset = null, pingTimer = 0, queued = [], described = false;
+  let syncs = [], offset = null, pingTimer = 0, queued = [], described = false, kept = null, retryTimer = 0;
   const fail = kind => Object.assign(new Error(kind), { kind });
   const newCode = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
   const sig = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
@@ -3064,7 +3064,7 @@ const link = (() => {
     close();
     for (let tries = 0; tries < 4; tries++) {
       code = newCode();
-      try { await register('aircricket-' + code.toLowerCase()); return code; }
+      try { await register('aircricket-' + code.toLowerCase()); kept = { id: 'aircricket-' + code.toLowerCase(), tries: 0 }; return code; }
       catch (err) { close(); if (err.kind !== 'taken') throw err; }    // someone else has that code: draw another
     }
     throw fail('offline');
@@ -3078,13 +3078,21 @@ const link = (() => {
       const timer = setTimeout(() => rej(off(`no reply from ${SIG.host} in 10 s`)), 10000);
       s.onmessage = ev => {
         let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
-        if (m.type === 'OPEN') { clearTimeout(timer); beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000); res(); }
+        if (m.type === 'OPEN') { clearTimeout(timer); clearInterval(beat); beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000); if (kept) kept.tries = 0; res(); }
         else if (m.type === 'ID-TAKEN') { clearTimeout(timer); rej(fail('taken')); }
         else if (m.type === 'ERROR') { clearTimeout(timer); rej(off(`${SIG.host} said: ${(m.payload && m.payload.msg) || 'error'}`)); }
         else if (m.type === 'OFFER' && m.payload && m.payload.sdp) answer(m.src, m.payload.sdp);
         else if (m.type === 'CANDIDATE' && m.src === phone && m.payload) addCandidate(m.payload.candidate);
       };
-      s.onclose = e => { clearTimeout(timer); clearInterval(beat); rej(off(`${SIG.host} closed the connection (code ${e.code})`)); };   // after OPEN this rej does nothing
+      s.onclose = e => {
+        clearTimeout(timer); clearInterval(beat);
+        rej(off(`${SIG.host} closed the connection (code ${e.code})`));   // after OPEN this does nothing
+        // the service dropped us while the code is in use: take the same code back, so the phone can still find it
+        if (ws === s && kept && kept.id === id) {
+          const k = kept;
+          retryTimer = setTimeout(() => { if (kept === k && ws === s) register(id).catch(() => {}); }, Math.min(10000, 1000 * 2 ** k.tries++));
+        }
+      };
     });
   }
   async function answer(src, sdp) {
@@ -3147,6 +3155,7 @@ const link = (() => {
   function send(m) { if (dc && dc.readyState === 'open') try { dc.send(JSON.stringify(m)); } catch (_) {} }
   function close() {
     drop(false);
+    kept = null; clearTimeout(retryTimer);
     clearInterval(beat);
     if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
     ws = null; phone = null;

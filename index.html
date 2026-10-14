@@ -173,6 +173,11 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
 .calib-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin-bottom:16px}
 .calib-bar i{display:block;height:100%;width:0;background:var(--led);transition:width .1s linear}
 @media (max-width:520px){ .slider{grid-template-columns:1fr 1fr 48px} .cam-panel{width:132px} }
+/* phone as bat: the phone is in your hands with your thumbs where the shot buttons were, so they go and the view gets the room */
+body.phone-bat .pad .shot{display:none}
+.chip.bat{pointer-events:auto;cursor:pointer;font-family:var(--f-ui);line-height:inherit}
+.chip.bat.lost{color:var(--wicket);border-color:rgba(255,97,82,.5)}
+.link-btn{justify-self:start;font:600 13px/1 var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer}
 
 @media (max-width:520px){
   .board{min-width:0;padding:8px 10px}
@@ -204,6 +209,7 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
     <div class="chips">
       <span class="chip" id="chip-guard">Guard · Middle</span>
       <span class="chip" id="chip-loft">Aerial off</span>
+      <button class="chip bat" id="chip-bat" type="button" aria-label="Phone bat status, tap to recentre" hidden>Bat · ready</button>
     </div>
   </div>
   <div class="right-col">
@@ -301,11 +307,18 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
         <input type="radio" name="ctrl" id="ctrl-keys" value="keys" checked><label for="ctrl-keys">Keyboard / touch</label>
         <input type="radio" name="ctrl" id="ctrl-hand" value="hand"><label for="ctrl-hand">Camera · hand</label>
         <input type="radio" name="ctrl" id="ctrl-object" value="object"><label for="ctrl-object">Camera · object as bat</label>
+        <input type="radio" name="ctrl" id="ctrl-phone" value="phone"><label for="ctrl-phone">Phone as bat</label>
       </div></fieldset>
       <div class="cam-settings" id="cam-settings" hidden>
         <p class="cam-help"><b>Swipe left or right</b> fast to play to that side, angle the swipe <b>upward</b> to hit it in the air. <b>Swipe down</b> for a straight drive. <b>Push toward the camera</b> to block. Lifting your hand is your backlift and is ignored. <b>Drift sideways slowly</b> to step across the crease. Press <b>C</b> to recentre. Keys still work as a backup.</p>
         <div class="slider"><label for="sens">Swing sensitivity</label><input type="range" id="sens" min="1" max="10" step="1" value="5"><output id="sens-out">5</output></div>
         <div class="slider"><label for="lag">Camera delay fix</label><input type="range" id="lag" min="0" max="200" step="10" value="70"><output id="lag-out">70 ms</output></div>
+      </div>
+      <div class="cam-settings" id="motion-settings" hidden>
+        <p class="cam-help">Hold the phone upright in front of you, screen toward you, hands at the bottom like the bat handle: the top of the phone is the blade. <b>Swing it down</b> for a straight drive, <b>down and across</b> to drive to that side, <b>flat</b> to play square and <b>round behind you</b> to play fine. A <b>rising</b> swing hits it in the air, and a faster swing hits harder. A <b>gentle nod forward</b> blocks; keep still to leave. Use the on-screen buttons to step across, loft or sweep. Grip it firmly and keep clear of people and furniture: a short, sharp flick is enough. Needs an Android phone.</p>
+        <div class="slider"><label for="msens">Swing sensitivity</label><input type="range" id="msens" min="1" max="10" step="1" value="5"><output id="msens-out">5</output></div>
+        <div class="slider"><label for="mlag">Sensor delay fix</label><input type="range" id="mlag" min="0" max="100" step="5" value="20"><output id="mlag-out">20 ms</output></div>
+        <button class="link-btn" id="btn-batlog" type="button">Copy swing data</button>
       </div>
       <fieldset><legend>Graphics</legend><div class="seg">
         <input type="radio" name="gfx" id="gfx-auto" value="auto" checked><label for="gfx-auto" id="gfx-auto-label">Auto</label>
@@ -1569,6 +1582,7 @@ function onBodyHit(hit, now) {
   event = { type: 'body', part: hit.seg.part, verdict, t: 99, f: null };
   ballPos.copy(pos);
   if (hit.seg.part === 'head') sound.helmet(); else sound.pad(hit.seg.part === 'body' ? 0.8 : 0.6);
+  motion.feel('body');
   fx.shake = hit.seg.part === 'head' ? 0.05 : 0.02;
   const part = hit.seg.part, where = part === 'head' ? 'On the helmet' : part === 'body' ? 'On the body' : 'Off the pad';
   const plausible = verdict.out || /Missing|over|outside off/i.test(verdict.why);
@@ -1978,6 +1992,7 @@ function resolveSwing() {
   else fx.shake = 0.02;
   if ((event.type === 'field' || event.type === 'drop') && event.runs > 0) planRuns(event.runs, hitWall + 0.35, event.t);
   sound.bat(kind, q, power);
+  motion.feel(kind, q, tier);
   if (kind === 'edge' && event.type !== 'catch' && event.type !== 'drop' && event.type !== 'playedon') crowdReact('ooh', 0.8);
 }
 
@@ -2180,7 +2195,7 @@ window.addEventListener('keydown', e => {
   else if (FAMILY_KEYS[e.code]) { e.preventDefault(); if (!e.repeat) shotKey(null, FAMILY_KEYS[e.code]); }
   else if (e.code === 'KeyA') { e.preventDefault(); if (!e.repeat) requestStep(-1); }
   else if (e.code === 'KeyD') { e.preventDefault(); if (!e.repeat) requestStep(1); }
-  else if (e.code === 'KeyC') { cam.recentre(); }
+  else if (e.code === 'KeyC') { cam.recentre(); motion.recentre(); }
   else if (e.code === 'KeyM') { toggleFieldMap(); }
   else if (e.code === 'Escape') openMenu(true);
 });
@@ -2778,6 +2793,226 @@ const cam = (() => {
 })();
 
 /* ============================================================
+   PHONE AS BAT
+   The phone's gyroscope stands in for the bat. Hold it upright in front of you, screen toward you, hands
+   at the bottom like the handle: the top of the phone is the blade. A swing is a burst of rotation, and its
+   fastest moment (found between sensor readings) is when bat meets ball. Which way the phone is moving at
+   that moment picks the shot, with the same gestures as the camera modes. Like every controller it only
+   calls requestShot().
+   ============================================================ */
+// game time until which a swing is under way: the ball waits for its contact before it reaches the pads or stumps
+const contactHold = { until: 0 };
+const motion = (() => {
+  const cfg = { sens: 5, lag: 0.02 };
+  let running = false, tip = null, face = null, fwd = null;
+  let lastMotion = 0, prevSpeed = 0, still = 0, sw = null, cooldownUntil = 0, calib = null, flash = null;
+  let entered = false, wake = null, chipTimer = 0, chipText = '';
+  const orient = [];     // recent {t, p}: where the phone points (its top and its back together), in the world frame (z up)
+  const raw = [];        // recent sensor readings, kept for the swing log
+  const log = [];        // the last few swings, for tuning
+
+  // device x (right), y (top edge) and z (out of the screen) in the world frame, from the spec's Z-X'-Y'' angles
+  function axes(a, b, g) {
+    a *= DEG; b *= DEG; g *= DEG;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
+    return { y: [-sa * cb, ca * cb, sb], z: [ca * sg + sa * sb * cg, sa * sg - ca * sb * cg, cb * cg] };
+  }
+  // toward the bowler: where the top of the phone and the back of it point, flattened onto the ground
+  function forwardFrom() {
+    if (!tip) return null;
+    const x = tip[0] - face[0], y = tip[1] - face[1], n = Math.hypot(x, y);
+    return n > 0.7 ? [x / n, y / n] : null;
+  }
+  const thresholds = () => { const thr = lerp(900, 250, (cfg.sens - 1) / 9); return { thr, low: Math.max(110, thr * 0.3) }; };   // deg/s
+  function keep(k, t, a, b, g) {
+    raw.push([k, Math.round(t * 1e4) / 10, +(+a).toFixed(1), +(+b).toFixed(1), +(+g).toFixed(1)]);
+    while (raw.length > 120) raw.shift();
+  }
+
+  function onOrient(e) {
+    if (e.beta == null) return;
+    const t = e.timeStamp / 1000, ax = axes(e.alpha || 0, e.beta, e.gamma || 0);
+    tip = ax.y; face = ax.z;
+    const px = tip[0] - face[0], py = tip[1] - face[1], pz = tip[2] - face[2], n = Math.hypot(px, py, pz);
+    orient.push({ t, p: [px / n, py / n, pz / n] }); while (orient.length > 16) orient.shift();
+    keep('o', t, e.alpha || 0, e.beta, e.gamma || 0);
+  }
+  function onMotion(e) {
+    const r = e.rotationRate;
+    if (!r || r.alpha == null) return;
+    const t = e.timeStamp / 1000, dt = lastMotion ? clamp(t - lastMotion, 0, 0.1) : 0;
+    lastMotion = t;
+    keep('m', t, r.alpha, r.beta, r.gamma);
+    step(t, Math.hypot(r.alpha, r.beta || 0, r.gamma || 0), dt);   // how fast it turns doesn't depend on which axis is which
+  }
+
+  function step(t, v, dt) {
+    const { thr, low } = thresholds();
+    const p = prevSpeed; prevSpeed = v;
+    if (calib) { calibStep(v, dt); return; }
+    // between balls, keep "toward the bowler" lined up with how you are holding the phone
+    const was = still; still = v < 40 ? still + dt : 0;
+    if (was < 0.6 && still >= 0.6 && (phase === 'runup' || phase === 'setfield')) { const f = forwardFrom(); if (f) fwd = f; }
+    if (sw) {
+      sw.s.push({ t, v });
+      if (v > sw.peak.v) sw.peak = sw.s[sw.s.length - 1];
+      else if (v < sw.peak.v * 0.8 || v < low || t - sw.t0 > 0.4) finish(t, thr);
+      return;
+    }
+    if (t < cooldownUntil || v < low || v <= p) return;       // a swing starts on a rising reading, not on the tail of the last one
+    sw = { t0: t, s: [{ t: t - dt, v: p }, { t, v }] };
+    sw.peak = sw.s[1];
+    if (phase === 'delivery' && !swing && !pause.on) contactHold.until = gnow() + 0.15;
+  }
+
+  function finish(t, thr) {
+    const s = sw.s, i = s.indexOf(sw.peak), pk = sw.peak, done = sw;
+    sw = null; contactHold.until = 0;
+    // the fastest moment, between readings: a parabola through the peak and its neighbours, or the middle of a
+    // flat top (a hard swing can max out the gyroscope)
+    let tPeak = pk.t;
+    const top = s.filter(x => x.v >= pk.v * 0.99);
+    if (top.length >= 3) tPeak = (top[0].t + top[top.length - 1].t) / 2;
+    else if (i > 0 && i < s.length - 1) {
+      const a = s[i - 1].v, b = pk.v, c = s[i + 1].v, den = a - 2 * b + c;
+      if (den < 0) tPeak += clamp(0.5 * (a - c) / den, -0.5, 0.5) * (s[i + 1].t - s[i - 1].t) / 2;
+    }
+    const d = tipMotion(tPeak), fast = pk.v >= thr;
+    const shot = d ? classify(d, fast) : null;
+    keepLog(done, tPeak, pk.v, thr, d, shot);
+    if (shot) fire(shot, tPeak, fast ? clamp(pk.v / thr, 1, 2) : 1, t);   // nothing: a backlift or a fidget, so ready for the real swing straight away
+  }
+  /* which way the phone was moving at contact, in your frame: r to your right, f toward the bowler, u up.
+     "Where it points" blends its top and its back, so a chop (the top tips over) and a flat swing (it turns
+     like a door, which barely moves the top of an upright phone) both show up. */
+  function tipMotion(tPeak) {
+    if (!fwd || orient.length < 2) return null;
+    const late = orient[orient.length - 1];
+    let early = orient[0];
+    for (const o of orient) if (o.t <= Math.min(late.t - 0.03, tPeak - 0.015)) early = o;
+    const dx = late.p[0] - early.p[0], dy = late.p[1] - early.p[1], u = late.p[2] - early.p[2];
+    const r = dx * fwd[1] - dy * fwd[0], f = dx * fwd[0] + dy * fwd[1], n = Math.hypot(r, f, u);
+    return n > 0.03 ? { r: r / n, f: f / n, u: u / n } : null;
+  }
+  /* the camera modes' gestures, plus the third dimension: down is straight, down and across a drive, flat is
+     square (or fine, once it wraps round behind you), rising and across is in the air; up or back toward you
+     is the backlift. A slow move toward the bowler is a block. */
+  function classify(d, fast) {
+    if (!fast) return d.f > 0.3 || d.u < -0.5 ? { dir: 'down', loft: false } : null;
+    const side = d.r > 0 ? 'right' : 'left', across = Math.atan2(Math.abs(d.u), Math.abs(d.r)) / DEG;   // 0 flat .. 90 vertical
+    if (d.u <= -0.5) return { dir: across < 65 ? 'up' + side : 'up', loft: false };
+    if (d.f > 0.75) return { dir: 'up', loft: d.u > 0.3 };                     // pushed straight through the line
+    if (d.u >= 0.35) return across < 65 && d.f > -0.5 ? { dir: d.f > 0.35 ? 'up' + side : side, loft: true } : null;
+    const h = Math.abs(Math.atan2(d.r, d.f)) / DEG;                             // flat: 0 toward the bowler .. 180 back toward you
+    const dir = h < 25 ? 'up' : h < 60 ? 'up' + side : h < 140 ? side : h < 170 ? 'down' + side : null;
+    return dir && { dir, loft: false };
+  }
+  const gesture = s => ({ up: 'Straight', down: 'Block' }[s.dir] || s.dir.replace('up', 'Drive ').replace('down', 'Fine ').replace(/^(left|right)$/, 'Square $1')) + (s.loft ? ' · air' : '');
+
+  function fire(shot, tPeak, power, t) {
+    const ok = requestShot(shot.dir, { loft: shot.loft, contactDelay: tPeak - performance.now() / 1000 - cfg.lag, source: 'phone', power: 0.94 + 0.08 * (power - 1) });
+    cooldownUntil = t + (ok ? 0.6 : 0.3);
+    // a practice swing between balls shows what it would have been; the follow-through after a shot doesn't
+    const inPlay = phase === 'delivery' || phase === 'hit' || phase === 'post';
+    if (ok || !inPlay) flash = { text: ok && swing ? SHOTS[swing.shot].name : gesture(shot), t: performance.now() / 1000, ok };
+    updateChip();
+  }
+
+  function calibStep(v, dt) {
+    const f = forwardFrom();
+    calib.held = v < 40 && f ? calib.held + dt : 0;
+    const st = $('calib-status'), bar = $('calib-bar');
+    if (calib.held >= 1) { fwd = f; still = 0; const done = calib.onDone; calib = null; done(); return; }
+    st.textContent = !f ? 'Hold it upright, screen toward you' : calib.held > 0.05 ? 'Hold still…' : 'Phone found · hold still';
+    bar.style.width = Math.min(100, calib.held * 100) + '%';
+  }
+  function calibrate(onDone) { calib = { held: 0, onDone }; }
+  function cancel() { calib = null; }
+  function recentre() { const f = forwardFrom(); if (f) { fwd = f; flash = { text: 'Recentred', t: performance.now() / 1000, ok: true }; updateChip(); } }
+
+  function updateChip() {
+    const el = $('chip-bat');
+    if (el.hidden) return;
+    const now = performance.now() / 1000, lost = running && now - lastMotion > 1, fresh = flash && now - flash.t < 0.9;
+    const text = lost ? 'Bat · no signal' : fresh ? flash.text : 'Bat · ready';
+    if (text === chipText) return;
+    chipText = text; el.textContent = text;
+    el.classList.toggle('lost', lost); el.classList.toggle('on', !lost && !!fresh && flash.ok);
+  }
+
+  /* the screen must not turn sideways mid-swing: the app locks it natively, the browser goes full screen to lock it */
+  function holdScreen(on) {
+    const cap = window.Capacitor;
+    if (cap && cap.isNativePlatform && cap.isNativePlatform()) { cap.nativePromise('GameScreen', 'hold', { on }).catch(() => {}); return; }
+    if (on) {
+      const el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) {
+        el.requestFullscreen({ navigationUI: 'hide' }).then(() => { entered = true; return screen.orientation.lock(screen.orientation.type); }).catch(() => {});
+      }
+      keepAwake();
+    } else {
+      try { screen.orientation.unlock(); } catch (_) {}
+      if (entered && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      entered = false;
+      if (wake) { wake.release().catch(() => {}); wake = null; }
+    }
+  }
+  // the app keeps the screen on by itself; in the browser the wake lock lapses whenever you switch away
+  function keepAwake() {
+    if (navigator.wakeLock && !wake) navigator.wakeLock.request('screen').then(w => { wake = w; w.addEventListener('release', () => { wake = null; }); }).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && running && !window.Capacitor) keepAwake(); });
+
+  function start() {
+    const fail = kind => Object.assign(new Error(kind), { kind });
+    if (!window.isSecureContext) return Promise.reject(fail('insecure'));
+    if (!running) {
+      running = true; tip = null; lastMotion = 0; sw = null; orient.length = 0;
+      window.addEventListener('devicemotion', onMotion);
+      window.addEventListener('deviceorientation', onOrient);
+      chipTimer = setInterval(updateChip, 250);
+    }
+    return new Promise((res, rej) => {
+      const t0 = performance.now();
+      (function wait() {
+        if (!running) return rej(fail('stopped'));
+        if (tip && lastMotion) return res();
+        if (performance.now() - t0 > 2000) { stop(); return rej(fail('nosensor')); }
+        setTimeout(wait, 50);
+      })();
+    });
+  }
+  function stop() {
+    if (!running) return;
+    running = false; calib = null; sw = null; contactHold.until = 0;
+    window.removeEventListener('devicemotion', onMotion);
+    window.removeEventListener('deviceorientation', onOrient);
+    clearInterval(chipTimer);
+    holdScreen(false);
+  }
+  // the bat buzzes in your hands: a clean thud off the middle, a rattle off an edge
+  function feel(kind, q, tier) {
+    if (!running || !navigator.vibrate) return;
+    const p = kind === 'body' ? [70] : kind === 'edge' ? [10, 30, 10] : kind === 'mishit' ? [14, 40, 14] : kind === 'defend' ? [18] : tier === 0 && q > 0.8 ? [45] : [28];
+    try { navigator.vibrate(p); } catch (_) {}
+  }
+
+  function keepLog(s, tPeak, peak, thr, d, shot) {
+    const r3 = v => Math.round(v * 1000) / 1000, from = s.t0 - 0.2;
+    log.push({ phase, t0: Math.round(s.t0 * 1e4) / 10, tPeak: Math.round(tPeak * 1e4) / 10, peak: Math.round(peak), thr: Math.round(thr),
+      fwd: fwd && fwd.map(r3), tip: d && [r3(d.r), r3(d.f), r3(d.u)], shot: shot && gesture(shot),
+      raw: raw.filter(x => x[1] >= from * 1000) });
+    while (log.length > 12) log.shift();
+  }
+  const logText = () => JSON.stringify({ ua: navigator.userAgent, sens: cfg.sens, lag: cfg.lag, swings: log });
+
+  return {
+    cfg, start, stop, calibrate, cancel, recentre, feel, holdScreen, logText, updateChip,
+    get active() { return running; },
+  };
+})();
+
+/* ============================================================
    HUD
    ============================================================ */
 function oversText(b) { return `${Math.floor(b / 6)}.${b % 6}`; }
@@ -2896,9 +3131,12 @@ function startInnings(m) {
   placeActors();
   layoutMeter(LEVELS[state.level].W);
   $('menu').hidden = true; $('end').hidden = true; $('calib').hidden = true;
-  const camOn = state.ctrl !== 'keys' && cam.active;
+  const camOn = (state.ctrl === 'hand' || state.ctrl === 'object') && cam.active;
   $('cam-panel').hidden = !camOn;
   if (camOn) cam.attach($('cam-view'));
+  const batOn = state.ctrl === 'phone' && motion.active;
+  $('chip-bat').hidden = !batOn; motion.updateChip();
+  if (document.body.classList.contains('phone-bat') !== batOn) { document.body.classList.toggle('phone-bat', batOn); resize(); }
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   updateHUD(); updateChips();
   nextBall();
@@ -3180,6 +3418,7 @@ async function beginCamera() {
   readSettings();
   $('cam-err').hidden = true;
   $('menu').hidden = true; $('calib').hidden = false;
+  $('calib-eyebrow').textContent = 'Camera setup'; $('calib-view').hidden = false;
   const obj = state.ctrl === 'object';
   $('calib-title').textContent = obj ? 'Lock your bat colour' : 'Find your stance';
   $('calib-text').textContent = obj
@@ -3203,25 +3442,67 @@ async function beginCamera() {
     setTimeout(() => { if (!$('calib').hidden) startInnings(); }, 350);
   });
 }
+const MOTION_ERRORS = {
+  insecure: 'The motion sensors only work on a secure https:// page. Play from the GitHub Pages link or the Android app.',
+  nosensor: 'No motion sensors were found. Phone as bat needs an Android phone with a gyroscope (almost all have one), in Chrome or the Android app. On a computer, use the keyboard.',
+};
+async function beginPhoneBat() {
+  readSettings();
+  $('cam-err').hidden = true;
+  $('menu').hidden = true; $('calib').hidden = false;
+  $('calib-eyebrow').textContent = 'Phone bat setup';
+  $('calib-title').textContent = 'Hold it like your bat';
+  $('calib-text').textContent = 'Hold the phone upright in front of you, screen toward you, with your hands at the bottom like the bat handle. Keep still for a second.';
+  $('calib-view').hidden = true; $('btn-lock').hidden = true;
+  $('calib-status').textContent = 'Starting sensors…'; $('calib-bar').style.width = '0%';
+  motion.holdScreen(true);          // while this tap still counts as a user gesture
+  try {
+    await motion.start();
+  } catch (err) {
+    if (err.kind === 'stopped') return;
+    $('calib').hidden = true; $('menu').hidden = false;
+    const e = $('cam-err'); e.textContent = MOTION_ERRORS[err.kind] || MOTION_ERRORS.nosensor; e.hidden = false;
+    phase = 'menu';
+    return;
+  }
+  if ($('calib').hidden) return;   // user pressed Back while it started
+  motion.calibrate(() => {
+    $('calib-status').textContent = 'Ready'; $('calib-bar').style.width = '100%';
+    setTimeout(() => { if (!$('calib').hidden) startInnings(); }, 350);
+  });
+}
 function syncCamSettings() {
-  const on = document.querySelector('input[name="ctrl"]:checked').value !== 'keys';
-  $('cam-settings').hidden = !on;
-  $('btn-start').textContent = on ? 'Set up camera' : 'Take guard';
+  const c = document.querySelector('input[name="ctrl"]:checked').value;
+  $('cam-settings').hidden = c !== 'hand' && c !== 'object';
+  $('motion-settings').hidden = c !== 'phone';
+  $('btn-start').textContent = c === 'phone' ? 'Set up phone bat' : c !== 'keys' ? 'Set up camera' : 'Take guard';
 }
 document.querySelectorAll('input[name="ctrl"]').forEach(r => r.addEventListener('change', () => { $('cam-err').hidden = true; syncCamSettings(); }));
 $('sens').addEventListener('input', e => { cam.cfg.sens = +e.target.value; $('sens-out').textContent = e.target.value; });
 $('lag').addEventListener('input', e => { cam.cfg.lag = +e.target.value / 1000; $('lag-out').textContent = e.target.value + ' ms'; });
+$('msens').addEventListener('input', e => { motion.cfg.sens = +e.target.value; $('msens-out').textContent = e.target.value; });
+$('mlag').addEventListener('input', e => { motion.cfg.lag = +e.target.value / 1000; $('mlag-out').textContent = e.target.value + ' ms'; });
+// the last few swings as raw sensor readings, to paste back when tuning the gestures
+$('btn-batlog').addEventListener('click', async e => {
+  const b = e.currentTarget, text = motion.logText();
+  try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; }
+  catch (_) { const t = $('cam-err'); t.textContent = text; t.hidden = false; b.textContent = 'Shown below'; }
+  setTimeout(() => { b.textContent = 'Copy swing data'; }, 1500);
+});
+$('chip-bat').addEventListener('click', e => { e.currentTarget.blur(); motion.recentre(); });
 $('btn-lock').addEventListener('click', () => {
   const msg = cam.lockCentre();
   $('calib-text').textContent = msg || 'Colour locked. Now hold the object where you grip the bat and keep still.';
   if (!msg) $('btn-lock').textContent = 'Re-lock colour';
 });
-$('btn-calib-back').addEventListener('click', () => { cam.cancel(); $('calib').hidden = true; phase = 'over'; openMenu(false); });
+$('btn-calib-back').addEventListener('click', () => { cam.cancel(); motion.cancel(); $('calib').hidden = true; phase = 'over'; openMenu(false); });
 $('btn-recentre').addEventListener('click', e => { e.currentTarget.blur(); cam.recentre(); });
 
 $('btn-start').addEventListener('click', () => {
   endPause(); sound.unlock(); readSettings();
+  if (state.ctrl !== 'phone') motion.stop();
   if (state.ctrl === 'keys') { cam.stop(); startInnings(); }
+  else if (state.ctrl === 'phone') { cam.stop(); beginPhoneBat(); }
   else beginCamera();
 });
 function resumeGame() {
@@ -3422,16 +3703,17 @@ function tick(ms) {
       puff.position.set(del.bouncePos.x, 0.015, del.bouncePos.z); puffT = 0; sound.bounce(del.type === 'pace' ? 1 : 0.7);
     }
     if (swing && !swing.resolved && td >= swing.tc) resolveSwing();
-    if (phase === 'delivery' && actorsReady && !padHit && td > lastTd) {
+    const held = now < contactHold.until;          // a phone swing is under way: its contact time arrives a moment after the fact
+    if (phase === 'delivery' && actorsReady && !padHit && !held && td > lastTd) {
       const hit = bodyContact(lastTd, td);
       if (hit) onBodyHit(hit, now);
     }
-    lastTd = td;
+    if (!held) lastTd = td;
     if (phase === 'delivery' && actorsReady && !keeperHold && td >= del.tEnd - 0.3) {
       keeperHold = true;                          // keeper rises to take it; ball is in the gloves at tEnd
     }
     if (phase === 'delivery') {
-      const pending = swing && !swing.resolved;
+      const pending = (swing && !swing.resolved) || held;
       if (!bowledChecked && !pending && td >= del.tStumps) {
         bowledChecked = true;
         const sp = del.stumpsPos;
@@ -3584,7 +3866,7 @@ function tick(ms) {
 
 /* test hook, only with ?debug in the address */
 if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, set del(v) { del = v; }, get swing() { return swing; }, get event() { return event; },
-  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, commentary, get match() { return match; } };
+  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, commentary, motion, get match() { return match; } };
 
 /* boot: idle scene behind the menu while the players load */
 state.hand = 1;

@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(GameScreenPlugin.class);   // before super.onCreate, which builds the bridge
         super.onCreate(savedInstanceState);
         // Don't let the screen dim mid-over.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

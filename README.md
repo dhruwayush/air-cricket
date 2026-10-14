@@ -1,6 +1,6 @@
 # Air Cricket
 
-A 3D night-match cricket batting game that runs in the browser. Bat with the keyboard, touch buttons, or your camera.
+A 3D night-match cricket batting game that runs in the browser. Bat with the keyboard, touch buttons, your camera, or your phone swung as the bat.
 
 **Play:** https://dhruwayush.github.io/air-cricket/
 
@@ -35,6 +35,24 @@ Swipe flat left or right to play square, down and across to drive to that side, 
 
 The camera only works on an `https://` page, so play from the GitHub Pages link rather than a downloaded file.
 
+### Phone as bat
+
+On an Android phone (Chrome or the app), pick **Phone as bat**. The phone's gyroscope is the bat: hold the phone upright in front of you, screen toward you, hands at the bottom like the handle, and the top of the phone is the blade. Setup takes a second of holding still.
+
+| Swing the phone | What it plays |
+| --- | --- |
+| Down | Straight drive, or back-foot punch |
+| Down and across | Drive to that side |
+| Flat to the side | Square: cut, pull, flick |
+| Flat and round behind you | Fine: late cut, glance |
+| Rising and across | In the air to that side |
+| A gentle nod forward | Block |
+| Keep still | Leave |
+
+The fastest moment of the swing is when bat meets ball, so that's what your timing is judged on, and a faster swing hits harder. Drawing the phone back toward you is the backlift and is ignored. Step, Loft, Sweep, Rev and Scoop stay on screen; the direction buttons go, since your thumbs rest there. The **Bat** chip on the scoreboard shows what each swing read as (swing between balls to practise), and tapping it recentres. The phone buzzes when you hit it: a clean thud off the middle, a rattle off an edge. The screen stops rotating while you play.
+
+**Swing sensitivity** sets how hard you need to swing, and **Sensor delay fix** makes up for the time the phone takes to report a movement. A short, sharp flick is enough: grip it firmly and keep clear of people and furniture. **Copy swing data** (under the settings) copies your last few swings as raw sensor readings, for tuning the gestures.
+
 ## Android app
 
 Every push to `main` builds an APK on GitHub Actions. Download the latest from
@@ -42,6 +60,7 @@ Every push to `main` builds an APK on GitHub Actions. Download the latest from
 
 - The game, three.js and fonts are bundled, so it plays offline. Hand tracking still downloads its model the first time.
 - The camera modes work in the app (Android asks for camera permission the first time).
+- Phone as bat works in the app too: it locks the screen's rotation while you play and buzzes on contact.
 - New builds install over the old one, no uninstall needed.
 
 To build locally you need Node 22, JDK 21 and the Android SDK:
@@ -88,6 +107,7 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - The batsmen run between the wickets, and fielders pick up and throw back.
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.
+- **Phone as bat** reads the gyroscope's rotation rate and the phone's orientation about 60 times a second. A swing starts when the rotation speeds up past a threshold, and contact is its fastest moment, found between readings by fitting a curve through the peak (or the middle of a flat top, when a hard swing maxes out the gyroscope). The shot comes from which way the phone was pointing and moving at that moment, measured against the direction you faced when you set it up, which is quietly re-taken whenever you hold still while the bowler runs in. Because the sensor only knows the peak a moment after it, the shot is dated back to it, and the ball waits for a swing that is under way before deciding it hit your pads.
 
 ## Modes
 

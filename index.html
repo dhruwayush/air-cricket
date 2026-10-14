@@ -3088,7 +3088,7 @@ const link = (() => {
         if (m.type === 'OPEN') { clearTimeout(timer); clearInterval(beat); beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000); if (kept) kept.tries = 0; res(); }
         else if (m.type === 'ID-TAKEN') { clearTimeout(timer); rej(fail('taken')); }
         else if (m.type === 'ERROR') { clearTimeout(timer); rej(off(`${SIG.host} said: ${(m.payload && m.payload.msg) || 'error'}`)); }
-        else if (m.type === 'OFFER' && m.payload && m.payload.sdp) answer(m.src, m.payload.sdp);
+        else if (m.type === 'OFFER' && m.payload && m.payload.sdp) answer(m.src, m.payload);
         else if (m.type === 'CANDIDATE' && m.src === phone && m.payload) addCandidate(m.payload.candidate);
       };
       s.onclose = e => {
@@ -3102,12 +3102,11 @@ const link = (() => {
       };
     });
   }
-  async function answer(src, sdp) {
+  async function answer(src, offer) {
     drop(false);                                     // the latest phone to connect is the bat
     phone = src; described = false; queued = [];
     listener('offer');
     const p = pc = new RTCPeerConnection({ iceServers: ICE });
-    p.onicecandidate = e => { if (e.candidate) sig({ type: 'CANDIDATE', dst: src, payload: { candidate: e.candidate.toJSON() } }); };
     p.ondatachannel = e => {
       const c = e.channel;
       c.onopen = () => {
@@ -3126,10 +3125,17 @@ const link = (() => {
       drop(true);
     };
     try {
-      await p.setRemoteDescription(sdp);
+      await p.setRemoteDescription(offer.sdp);
       described = true; queued.splice(0).forEach(addCandidate);
       await p.setLocalDescription(await p.createAnswer());
-      sig({ type: 'ANSWER', dst: src, payload: { sdp: p.localDescription.toJSON() } });
+      // every route goes inside the one answer, shaped as PeerJS's own client sends it: two messages in all
+      await new Promise(res => {
+        if (p.iceGatheringState === 'complete') return res();
+        const t = setTimeout(res, 2500);
+        p.addEventListener('icegatheringstatechange', () => { if (p.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+      });
+      if (p !== pc) return;
+      sig({ type: 'ANSWER', payload: { sdp: p.localDescription.toJSON(), type: 'data', connectionId: offer.connectionId, browser: 'chrome' }, dst: src });
     } catch (_) { if (p === pc) drop(true); }
   }
   function addCandidate(c) {

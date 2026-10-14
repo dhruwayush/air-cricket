@@ -154,8 +154,8 @@ function connect(code, retry) {
       opened = true; mark('service');
       beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000);
       say('Asking the big screen…');
-      waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`, 'no answer');
-      offer();
+      waitFor(8000, OFFLINE, 'no routes');                     // finding this phone's routes takes up to 2.5 s
+      offer(() => waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`, 'no answer'));
     } else if (m.type === 'ANSWER' && m.src === game && pc) {
       answered = true; mark('answered');
       say('The big screen answered · connecting…');
@@ -178,7 +178,7 @@ function connect(code, retry) {
     failed(OFFLINE, `${SIG.host}: ${timeline()}`);
   };
 }
-async function offer() {
+async function offer(onSent) {
   const p = pc = new RTCPeerConnection({ iceServers: ICE });
   const c = p.createDataChannel('bat');
   c.onopen = () => {
@@ -193,12 +193,26 @@ async function offer() {
   };
   c.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (_) { return; } onData(m); };
   c.onclose = () => { if (dc === c) failed('Disconnected from the big screen. Tap Try again to rejoin.'); };
-  p.onicecandidate = e => { if (e.candidate) sig({ type: 'CANDIDATE', dst: game, payload: { candidate: e.candidate.toJSON() } }); };
   p.onconnectionstatechange = () => { if (p === pc && p.connectionState === 'failed') { mark('link failed'); failed(NO_LINK, timeline()); } };
   try {
     await p.setLocalDescription(await p.createOffer());
-    sig({ type: 'OFFER', dst: game, payload: { sdp: p.localDescription.toJSON() } });
+    // every route this phone can be reached by goes inside the one offer, so only two messages cross the
+    // service; they're shaped exactly as PeerJS's own client sends them
+    await gathered(p, 2500);
+    if (p !== pc) return;
+    const cid = 'dc_' + Math.random().toString(36).slice(2, 12);
+    mark('asked');
+    sig({ type: 'OFFER', payload: { sdp: p.localDescription.toJSON(), type: 'data', connectionId: cid, label: cid, reliable: true, serialization: 'json', browser: 'chrome' }, dst: game });
+    onSent();
   } catch (_) { failed('Couldn’t start a connection on this phone. Reload the page and try again.'); }
+}
+// resolves once the browser has found its routes (or after ms, with what it has by then)
+function gathered(p, ms) {
+  return new Promise(res => {
+    if (p.iceGatheringState === 'complete') return res();
+    const t = setTimeout(res, ms);
+    p.addEventListener('icegatheringstatechange', () => { if (p.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+  });
 }
 function addCandidate(c) {
   if (!c || !pc) return;

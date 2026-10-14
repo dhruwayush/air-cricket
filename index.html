@@ -173,6 +173,16 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
 .calib-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin-bottom:16px}
 .calib-bar i{display:block;height:100%;width:0;background:var(--led);transition:width .1s linear}
 @media (max-width:520px){ .slider{grid-template-columns:1fr 1fr 48px} .cam-panel{width:132px} }
+/* phone as bat: the phone is in your hands with your thumbs where the shot buttons were, so they go and the view gets the room */
+body.phone-bat .pad .shot{display:none}
+.chip.bat{pointer-events:auto;cursor:pointer;font-family:var(--f-ui);line-height:inherit}
+.chip.bat.lost{color:var(--wicket);border-color:rgba(255,97,82,.5)}
+.pair{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;margin:4px 0 14px}
+.pair canvas{width:188px;height:188px;border-radius:8px;background:#fff;image-rendering:pixelated}
+.pair-k{margin:0;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.pair-code{margin:2px 0 6px;font-family:var(--f-display);font-weight:900;font-size:58px;line-height:1;letter-spacing:.14em;color:var(--led)}
+.pair-url{margin:0;font-size:13px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere;max-width:30ch}
+.link-btn{justify-self:start;font:600 13px/1 var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer}
 
 @media (max-width:520px){
   .board{min-width:0;padding:8px 10px}
@@ -204,6 +214,7 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
     <div class="chips">
       <span class="chip" id="chip-guard">Guard · Middle</span>
       <span class="chip" id="chip-loft">Aerial off</span>
+      <button class="chip bat" id="chip-bat" type="button" aria-label="Phone bat status, tap to recentre" hidden>Bat · ready</button>
     </div>
   </div>
   <div class="right-col">
@@ -301,11 +312,20 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
         <input type="radio" name="ctrl" id="ctrl-keys" value="keys" checked><label for="ctrl-keys">Keyboard / touch</label>
         <input type="radio" name="ctrl" id="ctrl-hand" value="hand"><label for="ctrl-hand">Camera · hand</label>
         <input type="radio" name="ctrl" id="ctrl-object" value="object"><label for="ctrl-object">Camera · object as bat</label>
+        <input type="radio" name="ctrl" id="ctrl-phone" value="phone"><label for="ctrl-phone">Phone as bat</label>
+        <input type="radio" name="ctrl" id="ctrl-remote" value="remote"><label for="ctrl-remote">Pair a phone as bat</label>
       </div></fieldset>
       <div class="cam-settings" id="cam-settings" hidden>
         <p class="cam-help"><b>Swipe left or right</b> fast to play to that side, angle the swipe <b>upward</b> to hit it in the air. <b>Swipe down</b> for a straight drive. <b>Push toward the camera</b> to block. Lifting your hand is your backlift and is ignored. <b>Drift sideways slowly</b> to step across the crease. Press <b>C</b> to recentre. Keys still work as a backup.</p>
         <div class="slider"><label for="sens">Swing sensitivity</label><input type="range" id="sens" min="1" max="10" step="1" value="5"><output id="sens-out">5</output></div>
         <div class="slider"><label for="lag">Camera delay fix</label><input type="range" id="lag" min="0" max="200" step="10" value="70"><output id="lag-out">70 ms</output></div>
+      </div>
+      <div class="cam-settings" id="motion-settings" hidden>
+        <p class="cam-help" id="pair-help" hidden><b>Play on this screen and swing your phone.</b> Scan the code that comes up with an Android phone and open it in Chrome. Both need the internet to pair; after that they talk directly, best on the same Wi-Fi. The phone has Step and Loft buttons, and the keys here still work.</p>
+        <p class="cam-help">Hold the phone upright in front of you, screen toward you, hands at the bottom like the bat handle: the top of the phone is the blade. <b>Swing it down</b> for a straight drive, <b>down and across</b> to drive to that side, <b>flat</b> to play square and <b>round behind you</b> to play fine. A <b>rising</b> swing hits it in the air, and a faster swing hits harder. A <b>gentle nod forward</b> blocks; keep still to leave.<span id="phone-only"> Use the on-screen buttons to step across, loft or sweep.</span> Grip it firmly and keep clear of people and furniture: a short, sharp flick is enough. Needs an Android phone.</p>
+        <div class="slider"><label for="msens">Swing sensitivity</label><input type="range" id="msens" min="1" max="10" step="1" value="5"><output id="msens-out">5</output></div>
+        <div class="slider"><label for="mlag">Sensor delay fix</label><input type="range" id="mlag" min="0" max="100" step="5" value="20"><output id="mlag-out">20 ms</output></div>
+        <button class="link-btn" id="btn-batlog" type="button">Copy swing data</button>
       </div>
       <fieldset><legend>Graphics</legend><div class="seg">
         <input type="radio" name="gfx" id="gfx-auto" value="auto" checked><label for="gfx-auto" id="gfx-auto-label">Auto</label>
@@ -332,6 +352,10 @@ fieldset:disabled .seg label{opacity:.45;cursor:default}
     <h2 id="calib-title">Find your stance</h2>
     <p class="lede" id="calib-text">Stand where the camera can see you and hold your hand up where you would grip the bat.</p>
     <div class="calib-view" id="calib-view"></div>
+    <div class="pair" id="pair" hidden>
+      <canvas id="pair-qr" width="376" height="376" aria-label="QR code that opens the bat page on your phone"></canvas>
+      <div><p class="pair-k">Code</p><p class="pair-code" id="pair-code">····</p><p class="pair-url" id="pair-url"></p></div>
+    </div>
     <p class="calib-status" id="calib-status">Starting camera…</p>
     <div class="calib-bar"><i id="calib-bar"></i></div>
     <div class="actions">
@@ -1569,6 +1593,7 @@ function onBodyHit(hit, now) {
   event = { type: 'body', part: hit.seg.part, verdict, t: 99, f: null };
   ballPos.copy(pos);
   if (hit.seg.part === 'head') sound.helmet(); else sound.pad(hit.seg.part === 'body' ? 0.8 : 0.6);
+  motion.feel('body');
   fx.shake = hit.seg.part === 'head' ? 0.05 : 0.02;
   const part = hit.seg.part, where = part === 'head' ? 'On the helmet' : part === 'body' ? 'On the body' : 'Off the pad';
   const plausible = verdict.out || /Missing|over|outside off/i.test(verdict.why);
@@ -1978,6 +2003,7 @@ function resolveSwing() {
   else fx.shake = 0.02;
   if ((event.type === 'field' || event.type === 'drop') && event.runs > 0) planRuns(event.runs, hitWall + 0.35, event.t);
   sound.bat(kind, q, power);
+  motion.feel(kind, q, tier);
   if (kind === 'edge' && event.type !== 'catch' && event.type !== 'drop' && event.type !== 'playedon') crowdReact('ooh', 0.8);
 }
 
@@ -2180,7 +2206,7 @@ window.addEventListener('keydown', e => {
   else if (FAMILY_KEYS[e.code]) { e.preventDefault(); if (!e.repeat) shotKey(null, FAMILY_KEYS[e.code]); }
   else if (e.code === 'KeyA') { e.preventDefault(); if (!e.repeat) requestStep(-1); }
   else if (e.code === 'KeyD') { e.preventDefault(); if (!e.repeat) requestStep(1); }
-  else if (e.code === 'KeyC') { cam.recentre(); }
+  else if (e.code === 'KeyC') { cam.recentre(); motion.recentre(); }
   else if (e.code === 'KeyM') { toggleFieldMap(); }
   else if (e.code === 'Escape') openMenu(true);
 });
@@ -2778,6 +2804,508 @@ const cam = (() => {
 })();
 
 /* ============================================================
+   PHONE AS BAT
+   The phone's gyroscope stands in for the bat. Hold it upright in front of you, screen toward you, hands
+   at the bottom like the handle: the top of the phone is the blade. A swing is a burst of rotation, and its
+   fastest moment (found between sensor readings) is when bat meets ball. Which way the phone is moving at
+   that moment picks the shot, with the same gestures as the camera modes. Like every controller it only
+   calls requestShot(). The readings come from this device, or from a paired phone (see PAIR A PHONE below).
+   ============================================================ */
+// game time until which a swing is under way: the ball waits for its contact before it reaches the pads or stumps
+const contactHold = { until: 0 };
+const motion = (() => {
+  const cfg = { sens: 5, lag: 0.02 };
+  let running = false, remote = false, tip = null, face = null, fwd = null;
+  let lastMotion = 0, prevSpeed = 0, still = 0, sw = null, cooldownUntil = 0, calib = null, flash = null;
+  let entered = false, wake = null, chipTimer = 0, chipText = '';
+  const orient = [];     // recent {t, p}: where the phone points (its top and its back together), in the world frame (z up)
+  const raw = [];        // recent sensor readings, kept for the swing log
+  const log = [];        // the last few swings, for tuning
+
+  // device x (right), y (top edge) and z (out of the screen) in the world frame, from the spec's Z-X'-Y'' angles
+  function axes(a, b, g) {
+    a *= DEG; b *= DEG; g *= DEG;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
+    return { y: [-sa * cb, ca * cb, sb], z: [ca * sg + sa * sb * cg, sa * sg - ca * sb * cg, cb * cg] };
+  }
+  // toward the bowler: where the top of the phone and the back of it point, flattened onto the ground
+  function forwardFrom() {
+    if (!tip) return null;
+    const x = tip[0] - face[0], y = tip[1] - face[1], n = Math.hypot(x, y);
+    return n > 0.7 ? [x / n, y / n] : null;
+  }
+  const thresholds = () => { const thr = lerp(900, 250, (cfg.sens - 1) / 9); return { thr, low: Math.max(110, thr * 0.3) }; };   // deg/s
+  function keep(k, t, a, b, g) {
+    raw.push([k, Math.round(t * 1e4) / 10, +(+a).toFixed(1), +(+b).toFixed(1), +(+g).toFixed(1)]);
+    while (raw.length > 120) raw.shift();
+  }
+
+  // t in seconds on this page's clock; the angles and rates are the DOM events' alpha, beta, gamma
+  function orientation(t, a, b, g) {
+    if (b == null) return;
+    const ax = axes(a || 0, b, g || 0);
+    tip = ax.y; face = ax.z;
+    const px = tip[0] - face[0], py = tip[1] - face[1], pz = tip[2] - face[2], n = Math.hypot(px, py, pz);
+    orient.push({ t, p: [px / n, py / n, pz / n] }); while (orient.length > 16) orient.shift();
+    keep('o', t, a || 0, b, g || 0);
+  }
+  function rotation(t, a, b, g) {
+    if (a == null) return;
+    const dt = lastMotion ? clamp(t - lastMotion, 0, 0.1) : 0;
+    lastMotion = t;
+    keep('m', t, a, b, g);
+    step(t, Math.hypot(a, b || 0, g || 0), dt);   // how fast it turns doesn't depend on which axis is which
+  }
+  const onOrient = e => orientation(e.timeStamp / 1000, e.alpha, e.beta, e.gamma);
+  const onMotion = e => { const r = e.rotationRate; if (r) rotation(e.timeStamp / 1000, r.alpha, r.beta, r.gamma); };
+
+  function step(t, v, dt) {
+    const { thr, low } = thresholds();
+    const p = prevSpeed; prevSpeed = v;
+    if (calib) { calibStep(v, dt); return; }
+    // between balls, keep "toward the bowler" lined up with how you are holding the phone
+    const was = still; still = v < 40 ? still + dt : 0;
+    if (was < 0.6 && still >= 0.6 && (phase === 'runup' || phase === 'setfield')) { const f = forwardFrom(); if (f) fwd = f; }
+    if (sw) {
+      sw.s.push({ t, v });
+      if (v > sw.peak.v) sw.peak = sw.s[sw.s.length - 1];
+      else if (v < sw.peak.v * 0.8 || v < low || t - sw.t0 > 0.4) finish(t, thr);
+      return;
+    }
+    if (t < cooldownUntil || v < low || v <= p) return;       // a swing starts on a rising reading, not on the tail of the last one
+    sw = { t0: t, s: [{ t: t - dt, v: p }, { t, v }] };
+    sw.peak = sw.s[1];
+    if (phase === 'delivery' && !swing && !pause.on) contactHold.until = gnow() + (remote ? 0.3 : 0.15);   // a paired phone's readings also cross the network
+  }
+
+  function finish(t, thr) {
+    const s = sw.s, i = s.indexOf(sw.peak), pk = sw.peak, done = sw;
+    sw = null; contactHold.until = 0;
+    // the fastest moment, between readings: a parabola through the peak and its neighbours, or the middle of a
+    // flat top (a hard swing can max out the gyroscope)
+    let tPeak = pk.t;
+    const top = s.filter(x => x.v >= pk.v * 0.99);
+    if (top.length >= 3) tPeak = (top[0].t + top[top.length - 1].t) / 2;
+    else if (i > 0 && i < s.length - 1) {
+      const a = s[i - 1].v, b = pk.v, c = s[i + 1].v, den = a - 2 * b + c;
+      if (den < 0) tPeak += clamp(0.5 * (a - c) / den, -0.5, 0.5) * (s[i + 1].t - s[i - 1].t) / 2;
+    }
+    const d = tipMotion(tPeak), fast = pk.v >= thr;
+    const shot = d ? classify(d, fast) : null;
+    keepLog(done, tPeak, pk.v, thr, d, shot);
+    if (shot) fire(shot, tPeak, fast ? clamp(pk.v / thr, 1, 2) : 1, t);   // nothing: a backlift or a fidget, so ready for the real swing straight away
+  }
+  /* which way the phone was moving at contact, in your frame: r to your right, f toward the bowler, u up.
+     "Where it points" blends its top and its back, so a chop (the top tips over) and a flat swing (it turns
+     like a door, which barely moves the top of an upright phone) both show up. */
+  function tipMotion(tPeak) {
+    if (!fwd || orient.length < 2) return null;
+    const late = orient[orient.length - 1];
+    let early = orient[0];
+    for (const o of orient) if (o.t <= Math.min(late.t - 0.03, tPeak - 0.015)) early = o;
+    const dx = late.p[0] - early.p[0], dy = late.p[1] - early.p[1], u = late.p[2] - early.p[2];
+    const r = dx * fwd[1] - dy * fwd[0], f = dx * fwd[0] + dy * fwd[1], n = Math.hypot(r, f, u);
+    return n > 0.03 ? { r: r / n, f: f / n, u: u / n } : null;
+  }
+  /* the camera modes' gestures, plus the third dimension: down is straight, down and across a drive, flat is
+     square (or fine, once it wraps round behind you), rising and across is in the air; up or back toward you
+     is the backlift. A slow move toward the bowler is a block. */
+  function classify(d, fast) {
+    if (!fast) return d.f > 0.3 || d.u < -0.5 ? { dir: 'down', loft: false } : null;
+    const side = d.r > 0 ? 'right' : 'left', across = Math.atan2(Math.abs(d.u), Math.abs(d.r)) / DEG;   // 0 flat .. 90 vertical
+    if (d.u <= -0.5) return { dir: across < 65 ? 'up' + side : 'up', loft: false };
+    if (d.f > 0.75) return { dir: 'up', loft: d.u > 0.3 };                     // pushed straight through the line
+    if (d.u >= 0.35) return across < 65 && d.f > -0.5 ? { dir: d.f > 0.35 ? 'up' + side : side, loft: true } : null;
+    const h = Math.abs(Math.atan2(d.r, d.f)) / DEG;                             // flat: 0 toward the bowler .. 180 back toward you
+    const dir = h < 25 ? 'up' : h < 60 ? 'up' + side : h < 140 ? side : h < 170 ? 'down' + side : null;
+    return dir && { dir, loft: false };
+  }
+  const gesture = s => ({ up: 'Straight', down: 'Block' }[s.dir] || s.dir.replace('up', 'Drive ').replace('down', 'Fine ').replace(/^(left|right)$/, 'Square $1')) + (s.loft ? ' · air' : '');
+
+  function fire(shot, tPeak, power, t) {
+    const ok = requestShot(shot.dir, { loft: shot.loft, contactDelay: tPeak - performance.now() / 1000 - cfg.lag, source: 'phone', power: 0.94 + 0.08 * (power - 1) });
+    cooldownUntil = t + (ok ? 0.6 : 0.3);
+    // a practice swing between balls shows what it would have been; the follow-through after a shot doesn't
+    const inPlay = phase === 'delivery' || phase === 'hit' || phase === 'post';
+    if (ok || !inPlay) flash = { text: ok && swing ? SHOTS[swing.shot].name : gesture(shot), t: performance.now() / 1000, ok };
+    updateChip();
+  }
+
+  function calibStep(v, dt) {
+    const f = forwardFrom();
+    calib.held = v < 40 && f ? calib.held + dt : 0;
+    const st = $('calib-status'), bar = $('calib-bar');
+    if (calib.held >= 1) { fwd = f; still = 0; const done = calib.onDone; calib = null; done(); return; }
+    const text = !f ? 'Hold it upright, screen toward you' : calib.held > 0.05 ? 'Hold still…' : 'Phone found · hold still';
+    if (st.textContent !== text) { st.textContent = text; if (remote) link.send({ type: 'status', text }); }
+    bar.style.width = Math.min(100, calib.held * 100) + '%';
+  }
+  function calibrate(onDone) { calib = { held: 0, onDone }; }
+  function cancel() { calib = null; }
+  function recentre() { const f = forwardFrom(); if (f) { fwd = f; flash = { text: 'Recentred', t: performance.now() / 1000, ok: true }; updateChip(); } }
+
+  function updateChip() {
+    const el = $('chip-bat');
+    if (el.hidden) return;
+    const now = performance.now() / 1000, lost = running && now - lastMotion > 1, fresh = flash && now - flash.t < 0.9;
+    const text = lost ? 'Bat · no signal' : fresh ? flash.text : 'Bat · ready';
+    if (text === chipText) return;
+    chipText = text; el.textContent = text;
+    el.classList.toggle('lost', lost); el.classList.toggle('on', !lost && !!fresh && flash.ok);
+    if (remote) link.send({ type: 'chip', text });
+  }
+
+  /* the screen must not turn sideways mid-swing: the app locks it natively, the browser goes full screen to lock it */
+  function holdScreen(on) {
+    if (remote) { if (on) keepAwake(); else if (wake) { wake.release().catch(() => {}); wake = null; } return; }   // a laptop or TV only needs to stay awake
+    const cap = window.Capacitor;
+    if (cap && cap.isNativePlatform && cap.isNativePlatform()) { cap.nativePromise('GameScreen', 'hold', { on }).catch(() => {}); return; }
+    if (on) {
+      const el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) {
+        el.requestFullscreen({ navigationUI: 'hide' }).then(() => { entered = true; return screen.orientation.lock(screen.orientation.type); }).catch(() => {});
+      }
+      keepAwake();
+    } else {
+      try { screen.orientation.unlock(); } catch (_) {}
+      if (entered && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      entered = false;
+      if (wake) { wake.release().catch(() => {}); wake = null; }
+    }
+  }
+  // the app keeps the screen on by itself; in the browser the wake lock lapses whenever you switch away
+  function keepAwake() {
+    if (navigator.wakeLock && !wake) navigator.wakeLock.request('screen').then(w => { wake = w; w.addEventListener('release', () => { wake = null; }); }).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && running && !window.Capacitor) keepAwake(); });
+
+  // from this device's sensors, or (fromPhone) from the readings a paired phone sends
+  function start(fromPhone) {
+    const fail = kind => Object.assign(new Error(kind), { kind });
+    if (!fromPhone && !window.isSecureContext) return Promise.reject(fail('insecure'));
+    if (running && remote !== !!fromPhone) stop();
+    if (!running) {
+      running = true; remote = !!fromPhone; tip = null; lastMotion = 0; sw = null; orient.length = 0;
+      if (!remote) {
+        window.addEventListener('devicemotion', onMotion);
+        window.addEventListener('deviceorientation', onOrient);
+      }
+      chipTimer = setInterval(updateChip, 250);
+    }
+    return new Promise((res, rej) => {
+      const t0 = performance.now();
+      (function wait() {
+        if (!running) return rej(fail('stopped'));
+        if (tip && lastMotion) return res();
+        if (performance.now() - t0 > (remote ? 5000 : 2000)) { stop(); return rej(fail(remote ? 'nosignal' : 'nosensor')); }
+        setTimeout(wait, 50);
+      })();
+    });
+  }
+  function stop() {
+    if (!running) return;
+    holdScreen(false);
+    running = false; calib = null; sw = null; contactHold.until = 0;
+    window.removeEventListener('devicemotion', onMotion);
+    window.removeEventListener('deviceorientation', onOrient);
+    clearInterval(chipTimer);
+    remote = false;
+  }
+  // the bat buzzes in your hands: a clean thud off the middle, a rattle off an edge
+  function feel(kind, q, tier) {
+    if (!running) return;
+    const p = kind === 'body' ? [70] : kind === 'edge' ? [10, 30, 10] : kind === 'mishit' ? [14, 40, 14] : kind === 'defend' ? [18] : tier === 0 && q > 0.8 ? [45] : [28];
+    if (remote) link.send({ type: 'buzz', p });
+    else if (navigator.vibrate) try { navigator.vibrate(p); } catch (_) {}
+  }
+
+  function keepLog(s, tPeak, peak, thr, d, shot) {
+    const r3 = v => Math.round(v * 1000) / 1000, from = s.t0 - 0.2;
+    log.push({ phase, t0: Math.round(s.t0 * 1e4) / 10, tPeak: Math.round(tPeak * 1e4) / 10, peak: Math.round(peak), thr: Math.round(thr),
+      fwd: fwd && fwd.map(r3), tip: d && [r3(d.r), r3(d.f), r3(d.u)], shot: shot && gesture(shot),
+      raw: raw.filter(x => x[1] >= from * 1000) });
+    while (log.length > 12) log.shift();
+  }
+  const logText = () => JSON.stringify({ ua: navigator.userAgent, sens: cfg.sens, lag: cfg.lag, swings: log });
+
+  return {
+    cfg, start, stop, calibrate, cancel, recentre, feel, holdScreen, logText, updateChip, rotation, orientation,
+    get active() { return running; }, get remote() { return remote; },
+  };
+})();
+
+/* ============================================================
+   PAIR A PHONE AS BAT
+   Play on a laptop or TV and swing your phone. The phone opens bat.html (from a QR code) and the two connect
+   directly with WebRTC; PeerJS's free public server only introduces them, passing the connection offer and
+   answer back and forth. The phone streams its sensor readings and the motion module reads them as if they
+   came from this device. Pings line the two clocks up, so a swing is dated on this page's clock however long
+   its readings took to arrive.
+   ============================================================ */
+const BAT_PAGE = 'https://dhruwayush.github.io/air-cricket/bat.html';
+const link = (() => {
+  const SIG = Object.assign({ host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' }, window.AC_PEER || {});
+  // STUN finds a direct route; when the network won't allow one (no hairpinning on the router, a guest Wi-Fi
+  // that keeps devices apart), PeerJS's public TURN servers relay the readings instead
+  const ICE = [{ urls: 'stun:stun.l.google.com:19302' },
+    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
+  let ws = null, beat = 0, pc = null, dc = null, phone = null, code = '', listener = () => {};
+  let syncs = [], offset = null, pingTimer = 0, queued = [], described = false, kept = null, retryTimer = 0;
+  const fail = kind => Object.assign(new Error(kind), { kind });
+  const newCode = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
+  const sig = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+
+  // where the phone goes: this site's bat.html, or the GitHub Pages one when this is the Android app
+  function batUrl() {
+    const app = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    const u = new URL(app || !/^https?:$/.test(location.protocol) ? BAT_PAGE : new URL('bat.html', location.href).href);
+    u.search = '?c=' + code;
+    return u.href;
+  }
+
+  // listen under a fresh four-letter code; on(event) hears 'offer' (a phone is trying), 'failed' (it couldn't
+  // get through), 'connected' and 'closed'
+  async function open(on) {
+    listener = on || (() => {});
+    if (ws && ws.readyState === 1 && code) return code;
+    close();
+    for (let tries = 0; tries < 4; tries++) {
+      code = newCode();
+      try { await register('aircricket-' + code.toLowerCase()); kept = { id: 'aircricket-' + code.toLowerCase(), tries: 0 }; return code; }
+      catch (err) { close(); if (err.kind !== 'taken') throw err; }    // someone else has that code: draw another
+    }
+    throw fail('offline');
+  }
+  function register(id) {
+    return new Promise((res, rej) => {
+      const token = Math.random().toString(36).slice(2);
+      const s = ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}&version=1.5.5`);
+      // why it failed, in small print: a screenshot of it says where pairing stopped
+      const off = detail => Object.assign(fail('offline'), { detail });
+      const timer = setTimeout(() => rej(off(`no reply from ${SIG.host} in 10 s`)), 10000);
+      s.onmessage = ev => {
+        let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+        if (m.type === 'OPEN') { clearTimeout(timer); clearInterval(beat); beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000); if (kept) kept.tries = 0; res(); }
+        else if (m.type === 'ID-TAKEN') { clearTimeout(timer); rej(fail('taken')); }
+        else if (m.type === 'ERROR') { clearTimeout(timer); rej(off(`${SIG.host} said: ${(m.payload && m.payload.msg) || 'error'}`)); }
+        else if (m.type === 'OFFER' && m.payload && m.payload.sdp) answer(m.src, m.payload);
+        else if (m.type === 'CANDIDATE' && m.src === phone && m.payload) addCandidate(m.payload.candidate);
+      };
+      s.onclose = e => {
+        clearTimeout(timer); clearInterval(beat);
+        rej(off(`${SIG.host} closed the connection (code ${e.code})`));   // after OPEN this does nothing
+        // the service dropped us while the code is in use: take the same code back, so the phone can still find it
+        if (ws === s && kept && kept.id === id) {
+          const k = kept;
+          retryTimer = setTimeout(() => { if (kept === k && ws === s) register(id).catch(() => {}); }, Math.min(10000, 1000 * 2 ** k.tries++));
+        }
+      };
+    });
+  }
+  async function answer(src, offer) {
+    drop(false);                                     // the latest phone to connect is the bat
+    phone = src; described = false; queued = [];
+    listener('offer');
+    const p = pc = new RTCPeerConnection({ iceServers: ICE });
+    p.ondatachannel = e => {
+      const c = e.channel;
+      c.onopen = () => {
+        if (p !== pc) return;
+        dc = c; syncs = []; offset = null;
+        clearInterval(pingTimer); ping(); pingTimer = setInterval(ping, 1000);
+        for (let i = 1; i <= 5; i++) setTimeout(ping, i * 120);          // a quick burst so the clocks line up straight away
+        listener('connected');
+      };
+      c.onmessage = ev => { if (c === dc) try { onData(JSON.parse(ev.data)); } catch (_) {} };
+      c.onclose = () => { if (c === dc) drop(true); };
+    };
+    p.onconnectionstatechange = () => {
+      if (p !== pc || (p.connectionState !== 'failed' && p.connectionState !== 'closed')) return;
+      if (!dc) listener('failed');                   // never got as far as the data channel
+      drop(true);
+    };
+    try {
+      await p.setRemoteDescription(offer.sdp);
+      described = true; queued.splice(0).forEach(addCandidate);
+      await p.setLocalDescription(await p.createAnswer());
+      // every route goes inside the one answer, shaped as PeerJS's own client sends it: two messages in all
+      await new Promise(res => {
+        if (p.iceGatheringState === 'complete') return res();
+        const t = setTimeout(res, 2500);
+        p.addEventListener('icegatheringstatechange', () => { if (p.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+      });
+      if (p !== pc) return;
+      sig({ type: 'ANSWER', payload: { sdp: p.localDescription.toJSON(), type: 'data', connectionId: offer.connectionId, browser: 'chrome' }, dst: src });
+    } catch (_) { if (p === pc) drop(true); }
+  }
+  function addCandidate(c) {
+    if (!c || !pc) return;
+    if (!described) { queued.push(c); return; }
+    pc.addIceCandidate(c).catch(() => {});
+  }
+  function drop(tell) {
+    const was = !!dc;
+    clearInterval(pingTimer);
+    if (pc) try { pc.close(); } catch (_) {}
+    pc = null; dc = null; offset = null;
+    if (tell && was) listener('closed');
+  }
+  function ping() { send({ type: 'ping', t0: performance.now() }); }
+  function onData(m) {
+    if (Array.isArray(m)) {                       // a reading: [kind, the phone's clock in ms, alpha, beta, gamma]
+      if (offset == null) return;
+      const t = (m[1] - offset) / 1000;
+      if (m[0] === 'm') motion.rotation(t, m[2], m[3], m[4]); else if (m[0] === 'o') motion.orientation(t, m[2], m[3], m[4]);
+    } else if (m && m.type === 'pong') {
+      // the phone answered at t1 on its clock, somewhere between t0 and now on ours: trust the quickest round trips
+      const t2 = performance.now();
+      syncs.push({ rtt: t2 - m.t0, off: m.t1 - (m.t0 + t2) / 2 }); while (syncs.length > 15) syncs.shift();
+      offset = syncs.reduce((a, b) => (b.rtt < a.rtt ? b : a)).off;
+    } else if (m && m.type === 'recentre') motion.recentre();
+    else if (m && m.type === 'step') requestStep(m.d > 0 ? 1 : -1);
+    else if (m && m.type === 'loft') { input.loftToggle = !input.loftToggle; updateChips(); send({ type: 'loft', on: input.loftToggle }); }
+  }
+  function send(m) { if (dc && dc.readyState === 'open') try { dc.send(JSON.stringify(m)); } catch (_) {} }
+  function close() {
+    drop(false);
+    kept = null; clearTimeout(retryTimer);
+    clearInterval(beat);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
+    ws = null; phone = null;
+  }
+
+  // the bat page's address as a QR code on a canvas, dark on light so any phone camera reads it
+  function drawQR(canvas) {
+    const m = qrMatrix(batUrl()), n = m.length, quiet = 3;
+    const cell = Math.floor(canvas.width / (n + quiet * 2)), off = Math.floor((canvas.width - cell * n) / 2);
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.fillStyle = '#08161b';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) g.fillRect(off + c * cell, off + r * cell, cell, cell);
+  }
+  return { open, close, send, drawQR, batUrl,
+    get code() { return code; }, get connected() { return !!(dc && dc.readyState === 'open'); }, get synced() { return offset != null; } };
+})();
+
+/* QR code (ISO 18004), byte mode, error correction level M, versions 1 to 10: plenty for the bat page's address.
+   Reed-Solomon over GF(256); the mask with the lowest penalty is used. */
+const qrMatrix = (() => {
+  // per version: error correction codewords per block, then [blocks, data codewords per block] groups
+  const BLOCKS = [null, [10, [1, 16]], [16, [1, 28]], [26, [1, 44]], [18, [2, 32]], [24, [2, 43]], [16, [4, 27]],
+    [18, [4, 31]], [22, [2, 38], [2, 39]], [22, [3, 36], [2, 37]], [26, [4, 43], [1, 44]]];
+  const ALIGN = [null, [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
+  const EXP = new Array(512), LOG = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 256) x ^= 0x11d; }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const mul = (a, b) => (a && b ? EXP[LOG[a] + LOG[b]] : 0);
+  function ecc(data, n) {
+    let gen = [1];                                   // (x - a^0)(x - a^1)...(x - a^(n-1)), highest power first
+    for (let i = 0; i < n; i++) gen = gen.concat(0).map((c, j) => c ^ (j ? mul(gen[j - 1], EXP[i]) : 0));
+    const rem = new Array(n).fill(0);
+    for (const b of data) {
+      const f = b ^ rem.shift(); rem.push(0);
+      for (let i = 0; i < n; i++) rem[i] ^= mul(gen[i + 1], f);
+    }
+    return rem;
+  }
+  const bch = (v, poly, bits) => { let r = v << bits; const d = Math.floor(Math.log2(poly)); while (r && Math.floor(Math.log2(r)) >= d) r ^= poly << (Math.floor(Math.log2(r)) - d); return (v << bits) | r; };
+  const MASKS = [(r, c) => (r + c) % 2 === 0, r => r % 2 === 0, (r, c) => c % 3 === 0, (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0, (r, c) => (r * c) % 2 + (r * c) % 3 === 0,
+    (r, c) => ((r * c) % 2 + (r * c) % 3) % 2 === 0, (r, c) => ((r * c) % 3 + (r + c) % 2) % 2 === 0];
+
+  function codewords(bytes, v) {
+    const [ecN, ...groups] = BLOCKS[v], total = groups.reduce((s, [k, d]) => s + k * d, 0);
+    const bits = [], put = (x, n) => { for (let i = n - 1; i >= 0; i--) bits.push((x >>> i) & 1); };
+    put(4, 4); put(bytes.length, v < 10 ? 8 : 16); bytes.forEach(b => put(b, 8));
+    put(0, Math.min(4, total * 8 - bits.length));
+    while (bits.length % 8) bits.push(0);
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => a * 2 + b, 0));
+    for (let p = 0; data.length < total; p ^= 1) data.push(p ? 0x11 : 0xec);
+    const blocks = [];
+    let at = 0;
+    for (const [k, d] of groups) for (let i = 0; i < k; i++) { const b = data.slice(at, at + d); at += d; blocks.push({ b, e: ecc(b, ecN) }); }
+    const out = [], most = Math.max(...blocks.map(x => x.b.length));
+    for (let i = 0; i < most; i++) blocks.forEach(x => { if (i < x.b.length) out.push(x.b[i]); });
+    for (let i = 0; i < ecN; i++) blocks.forEach(x => out.push(x.e[i]));
+    return out;
+  }
+  function build(v, words, mask) {
+    const n = 17 + 4 * v, m = Array.from({ length: n }, () => new Array(n).fill(null));
+    const finder = (r0, c0) => {
+      for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+        if (r0 + r < 0 || r0 + r >= n || c0 + c < 0 || c0 + c >= n) continue;
+        m[r0 + r][c0 + c] = (r >= 0 && r <= 6 && (c === 0 || c === 6)) || (c >= 0 && c <= 6 && (r === 0 || r === 6)) || (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+      }
+    };
+    finder(0, 0); finder(n - 7, 0); finder(0, n - 7);
+    for (const r of ALIGN[v]) for (const c of ALIGN[v]) {
+      if (m[r][c] !== null) continue;                // not over a finder
+      for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) m[r + i][c + j] = Math.max(Math.abs(i), Math.abs(j)) !== 1;
+    }
+    for (let i = 8; i < n - 8; i++) { if (m[i][6] === null) m[i][6] = i % 2 === 0; if (m[6][i] === null) m[6][i] = i % 2 === 0; }
+    const fmt = bch(mask, 0x537, 10) ^ 0x5412;       // level M is 00
+    for (let i = 0; i < 15; i++) {
+      const b = ((fmt >> i) & 1) === 1;
+      m[i < 6 ? i : i < 8 ? i + 1 : n - 15 + i][8] = b;
+      m[8][i < 8 ? n - i - 1 : i < 9 ? 15 - i : 14 - i] = b;
+    }
+    m[n - 8][8] = true;
+    if (v >= 7) {
+      const ver = bch(v, 0x1f25, 12);
+      for (let i = 0; i < 18; i++) { const b = ((ver >> i) & 1) === 1; m[Math.floor(i / 3)][i % 3 + n - 11] = b; m[i % 3 + n - 11][Math.floor(i / 3)] = b; }
+    }
+    let bit = 0, up = true;
+    for (let col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      for (let k = 0; k < n; k++) {
+        const r = up ? n - 1 - k : k;
+        for (let c = col; c > col - 2; c--) {
+          if (m[r][c] !== null) continue;
+          const dark = bit < words.length * 8 && ((words[bit >> 3] >>> (7 - (bit & 7))) & 1) === 1;
+          m[r][c] = dark !== MASKS[mask](r, c); bit++;
+        }
+      }
+      up = !up;
+    }
+    return m;
+  }
+  function penalty(m) {
+    const n = m.length; let p = 0, dark = 0;
+    for (let a = 0; a < n; a++) {
+      for (const line of [r => m[a][r], r => m[r][a]]) {
+        let run = 1;
+        for (let i = 1; i <= n; i++) {
+          if (i < n && line(i) === line(i - 1)) run++;
+          else { if (run >= 5) p += run - 2; run = 1; }
+        }
+        for (let i = 0; i + 7 <= n; i++) {          // finder-like 1:1:3:1:1 with a light margin
+          const s = [0, 1, 2, 3, 4, 5, 6].map(k => line(i + k));
+          if (s.join() === 'true,false,true,true,true,false,true') {
+            const before = [1, 2, 3, 4].every(k => i - k < 0 || !line(i - k)), after = [7, 8, 9, 10].every(k => i + k >= n || !line(i + k));
+            if (before || after) p += 40;
+          }
+        }
+      }
+      for (let b = 0; b < n; b++) {
+        if (m[a][b]) dark++;
+        if (a < n - 1 && b < n - 1 && m[a][b] === m[a + 1][b] && m[a][b] === m[a][b + 1] && m[a][b] === m[a + 1][b + 1]) p += 3;
+      }
+    }
+    return p + Math.floor(Math.abs(dark * 20 / (n * n) - 10)) * 10;
+  }
+  return text => {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    const v = BLOCKS.findIndex((b, i) => i && b.slice(1).reduce((s, [k, d]) => s + k * d, 0) * 8 >= 4 + (i < 10 ? 8 : 16) + bytes.length * 8);
+    if (v < 1) throw new Error('too long for a QR code here');
+    const words = codewords(bytes, v);
+    let best = null, bestP = Infinity;
+    for (let mask = 0; mask < 8; mask++) { const m = build(v, words, mask), p = penalty(m); if (p < bestP) { best = m; bestP = p; } }
+    return best;
+  };
+})();
+
+/* ============================================================
    HUD
    ============================================================ */
 function oversText(b) { return `${Math.floor(b / 6)}.${b % 6}`; }
@@ -2896,9 +3424,12 @@ function startInnings(m) {
   placeActors();
   layoutMeter(LEVELS[state.level].W);
   $('menu').hidden = true; $('end').hidden = true; $('calib').hidden = true;
-  const camOn = state.ctrl !== 'keys' && cam.active;
+  const camOn = (state.ctrl === 'hand' || state.ctrl === 'object') && cam.active;
   $('cam-panel').hidden = !camOn;
   if (camOn) cam.attach($('cam-view'));
+  const batOn = (state.ctrl === 'phone' || state.ctrl === 'remote') && motion.active, inHand = batOn && !motion.remote;
+  $('chip-bat').hidden = !batOn; motion.updateChip();
+  if (document.body.classList.contains('phone-bat') !== inHand) { document.body.classList.toggle('phone-bat', inHand); resize(); }
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   updateHUD(); updateChips();
   nextBall();
@@ -3180,6 +3711,7 @@ async function beginCamera() {
   readSettings();
   $('cam-err').hidden = true;
   $('menu').hidden = true; $('calib').hidden = false;
+  $('calib-eyebrow').textContent = 'Camera setup'; $('calib-view').hidden = false; $('pair').hidden = true;
   const obj = state.ctrl === 'object';
   $('calib-title').textContent = obj ? 'Lock your bat colour' : 'Find your stance';
   $('calib-text').textContent = obj
@@ -3203,25 +3735,127 @@ async function beginCamera() {
     setTimeout(() => { if (!$('calib').hidden) startInnings(); }, 350);
   });
 }
+const MOTION_ERRORS = {
+  insecure: 'The motion sensors only work on a secure https:// page. Play from the GitHub Pages link or the Android app.',
+  nosensor: 'No motion sensors were found. Phone as bat needs an Android phone with a gyroscope (almost all have one), in Chrome or the Android app. On a computer, pair a phone instead, or use the keyboard.',
+  offline: 'Couldn’t reach the pairing service. Pairing needs an internet connection on both this device and your phone.',
+};
+async function beginPhoneBat() {
+  readSettings();
+  $('cam-err').hidden = true;
+  $('menu').hidden = true; $('calib').hidden = false;
+  $('calib-eyebrow').textContent = 'Phone bat setup';
+  $('calib-title').textContent = 'Hold it like your bat';
+  $('calib-text').textContent = 'Hold the phone upright in front of you, screen toward you, with your hands at the bottom like the bat handle. Keep still for a second.';
+  $('calib-view').hidden = true; $('btn-lock').hidden = true; $('pair').hidden = true;
+  $('calib-status').textContent = 'Starting sensors…'; $('calib-bar').style.width = '0%';
+  if (motion.remote) motion.stop();
+  motion.holdScreen(true);          // while this tap still counts as a user gesture
+  try {
+    await motion.start();
+  } catch (err) {
+    if (err.kind === 'stopped') return;
+    $('calib').hidden = true; $('menu').hidden = false;
+    const e = $('cam-err'); e.textContent = MOTION_ERRORS[err.kind] || MOTION_ERRORS.nosensor; e.hidden = false;
+    phase = 'menu';
+    return;
+  }
+  if ($('calib').hidden) return;   // user pressed Back while it started
+  motion.calibrate(() => {
+    $('calib-status').textContent = 'Ready'; $('calib-bar').style.width = '100%';
+    setTimeout(() => { if (!$('calib').hidden) startInnings(); }, 350);
+  });
+}
+/* the big-screen side of pairing: show the code, wait for the phone, then the same hold-still as above */
+async function beginPairing() {
+  readSettings();
+  $('cam-err').hidden = true;
+  $('menu').hidden = true; $('calib').hidden = false;
+  $('calib-eyebrow').textContent = 'Pair your phone';
+  $('calib-view').hidden = true; $('btn-lock').hidden = true; $('calib-bar').style.width = '0%';
+  if (link.connected) { holdStillRemote(); return; }          // still paired from last time
+  $('pair').hidden = true;
+  $('calib-title').textContent = 'Scan with your phone';
+  $('calib-text').textContent = 'Point your Android phone’s camera at the code and open the link in Chrome, then tap Connect on the phone.';
+  $('calib-status').textContent = 'Setting up…';
+  try {
+    await link.open(onLinkEvent);
+  } catch (err) {
+    if ($('calib').hidden) return;
+    $('calib').hidden = true; $('menu').hidden = false;
+    const e = $('cam-err'); e.textContent = MOTION_ERRORS.offline + (err.detail ? ` (${err.detail})` : ''); e.hidden = false;
+    phase = 'menu';
+    return;
+  }
+  if ($('calib').hidden) return;   // user pressed Back while it set up
+  if (link.connected) return;      // the phone beat us to it
+  link.drawQR($('pair-qr'));
+  $('pair-code').textContent = link.code;
+  $('pair-url').textContent = 'Or open ' + link.batUrl().replace(/^https?:\/\//, '').replace(/\?.*$/, '') + ' and type the code.';
+  $('pair').hidden = false;
+  $('calib-status').textContent = 'Waiting for your phone…';
+}
+function onLinkEvent(ev) {
+  const setup = !$('calib').hidden && state.ctrl === 'remote';
+  if (ev === 'offer' && setup && !link.connected) $('calib-status').textContent = 'Phone found · connecting…';
+  else if (ev === 'failed' && setup) $('calib-status').textContent = 'Couldn’t reach the phone · tap Connect on it again';
+  else if (ev === 'connected' && setup) holdStillRemote();
+  else if (ev === 'closed' && setup) { $('calib-status').textContent = 'Phone disconnected · tap Connect on it again'; $('calib-bar').style.width = '0%'; motion.cancel(); }
+}
+async function holdStillRemote() {
+  $('pair').hidden = true;
+  $('calib-title').textContent = 'Hold it like your bat';
+  $('calib-text').textContent = 'Phone connected. Hold it upright in front of you, screen toward you, with your hands at the bottom like the bat handle. Keep still for a second.';
+  $('calib-status').textContent = 'Waiting for the phone’s sensors…';
+  try {
+    await motion.start(true);
+  } catch (err) {
+    if (!$('calib').hidden) $('calib-status').textContent = err.kind === 'nosignal' ? 'No readings from the phone · is its screen on?' : 'Phone disconnected';
+    return;
+  }
+  if ($('calib').hidden) return;
+  motion.holdScreen(true);
+  motion.calibrate(() => {
+    $('calib-status').textContent = 'Ready'; $('calib-bar').style.width = '100%';
+    link.send({ type: 'status', text: 'Ready · watch the big screen' });
+    setTimeout(() => { if (!$('calib').hidden) startInnings(); }, 350);
+  });
+}
 function syncCamSettings() {
-  const on = document.querySelector('input[name="ctrl"]:checked').value !== 'keys';
-  $('cam-settings').hidden = !on;
-  $('btn-start').textContent = on ? 'Set up camera' : 'Take guard';
+  const c = document.querySelector('input[name="ctrl"]:checked').value;
+  $('cam-settings').hidden = c !== 'hand' && c !== 'object';
+  $('motion-settings').hidden = c !== 'phone' && c !== 'remote';
+  $('pair-help').hidden = c !== 'remote'; $('phone-only').hidden = c === 'remote';
+  $('btn-start').textContent = c === 'phone' ? 'Set up phone bat' : c === 'remote' ? 'Pair phone' : c !== 'keys' ? 'Set up camera' : 'Take guard';
 }
 document.querySelectorAll('input[name="ctrl"]').forEach(r => r.addEventListener('change', () => { $('cam-err').hidden = true; syncCamSettings(); }));
 $('sens').addEventListener('input', e => { cam.cfg.sens = +e.target.value; $('sens-out').textContent = e.target.value; });
 $('lag').addEventListener('input', e => { cam.cfg.lag = +e.target.value / 1000; $('lag-out').textContent = e.target.value + ' ms'; });
+$('msens').addEventListener('input', e => { motion.cfg.sens = +e.target.value; $('msens-out').textContent = e.target.value; });
+$('mlag').addEventListener('input', e => { motion.cfg.lag = +e.target.value / 1000; $('mlag-out').textContent = e.target.value + ' ms'; });
+// the last few swings as raw sensor readings, to paste back when tuning the gestures
+$('btn-batlog').addEventListener('click', async e => {
+  const b = e.currentTarget, text = motion.logText();
+  try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; }
+  catch (_) { const t = $('cam-err'); t.textContent = text; t.hidden = false; b.textContent = 'Shown below'; }
+  setTimeout(() => { b.textContent = 'Copy swing data'; }, 1500);
+});
+$('chip-bat').addEventListener('click', e => { e.currentTarget.blur(); motion.recentre(); });
 $('btn-lock').addEventListener('click', () => {
   const msg = cam.lockCentre();
   $('calib-text').textContent = msg || 'Colour locked. Now hold the object where you grip the bat and keep still.';
   if (!msg) $('btn-lock').textContent = 'Re-lock colour';
 });
-$('btn-calib-back').addEventListener('click', () => { cam.cancel(); $('calib').hidden = true; phase = 'over'; openMenu(false); });
+$('btn-calib-back').addEventListener('click', () => { cam.cancel(); motion.cancel(); $('calib').hidden = true; $('pair').hidden = true; phase = 'over'; openMenu(false); });
 $('btn-recentre').addEventListener('click', e => { e.currentTarget.blur(); cam.recentre(); });
 
 $('btn-start').addEventListener('click', () => {
   endPause(); sound.unlock(); readSettings();
+  if (state.ctrl !== 'phone' && state.ctrl !== 'remote') motion.stop();
+  if (state.ctrl !== 'remote') link.close();
   if (state.ctrl === 'keys') { cam.stop(); startInnings(); }
+  else if (state.ctrl === 'phone') { cam.stop(); beginPhoneBat(); }
+  else if (state.ctrl === 'remote') { cam.stop(); beginPairing(); }
   else beginCamera();
 });
 function resumeGame() {
@@ -3422,16 +4056,17 @@ function tick(ms) {
       puff.position.set(del.bouncePos.x, 0.015, del.bouncePos.z); puffT = 0; sound.bounce(del.type === 'pace' ? 1 : 0.7);
     }
     if (swing && !swing.resolved && td >= swing.tc) resolveSwing();
-    if (phase === 'delivery' && actorsReady && !padHit && td > lastTd) {
+    const held = now < contactHold.until;          // a phone swing is under way: its contact time arrives a moment after the fact
+    if (phase === 'delivery' && actorsReady && !padHit && !held && td > lastTd) {
       const hit = bodyContact(lastTd, td);
       if (hit) onBodyHit(hit, now);
     }
-    lastTd = td;
+    if (!held) lastTd = td;
     if (phase === 'delivery' && actorsReady && !keeperHold && td >= del.tEnd - 0.3) {
       keeperHold = true;                          // keeper rises to take it; ball is in the gloves at tEnd
     }
     if (phase === 'delivery') {
-      const pending = swing && !swing.resolved;
+      const pending = (swing && !swing.resolved) || held;
       if (!bowledChecked && !pending && td >= del.tStumps) {
         bowledChecked = true;
         const sp = del.stumpsPos;
@@ -3584,7 +4219,7 @@ function tick(ms) {
 
 /* test hook, only with ?debug in the address */
 if (/[?&]debug\b/.test(location.search)) window.__ac = { get phase() { return phase; }, get del() { return del; }, set del(v) { del = v; }, get swing() { return swing; }, get event() { return event; },
-  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, commentary, get match() { return match; } };
+  gnow, get relWall() { return relWall; }, requestShot, state, captain, crowdFx, sound, showEnd, startInnings, makeMatch, makeDelivery, shareText, loadRecords, commentary, motion, get match() { return match; } };
 
 /* boot: idle scene behind the menu while the players load */
 state.hand = 1;

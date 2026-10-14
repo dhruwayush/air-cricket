@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08161b">
+<title>Air Cricket Bat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+<style>
+/* The phone end of "Pair a phone as bat": no 3D, just the connection, what the big screen says, and big
+   buttons. Same night look as the game. */
+:root{
+  --night:#08161b;
+  --panel:#0b1d23;
+  --line:rgba(186,222,204,.18);
+  --chalk:#eef1e7;
+  --muted:#9ab1a8;
+  --led:#ffb627;
+  --led-ink:#1d1403;
+  --wicket:#ff6152;
+  --four:#83e3a6;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-ui:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--night);color:var(--chalk);font:16px/1.45 var(--f-ui);-webkit-tap-highlight-color:transparent}
+main{box-sizing:border-box;min-height:100%;max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 24px) 16px calc(env(safe-area-inset-bottom,0px) + 20px);display:flex;flex-direction:column;gap:14px}
+.eyebrow{margin:0;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--led)}
+h1{margin:0;font-family:var(--f-display);font-weight:900;font-size:clamp(44px,13vw,64px);line-height:.9;text-transform:uppercase;text-wrap:balance}
+.lede{margin:0;color:var(--muted);font-size:17px}
+form{display:grid;gap:10px}
+label{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+input{box-sizing:border-box;width:100%;font:900 52px/1 var(--f-display);letter-spacing:.2em;text-transform:uppercase;text-align:center;color:var(--led);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 8px}
+input:focus{outline:2px solid var(--led);outline-offset:2px}
+.btn{font:700 18px/1 var(--f-ui);letter-spacing:.08em;text-transform:uppercase;padding:18px 20px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--chalk);cursor:pointer;width:100%}
+.btn.primary{background:var(--led);color:var(--led-ink);border-color:transparent}
+.btn:disabled{opacity:.5}
+.status{margin:0;font-family:var(--f-display);font-weight:800;font-size:30px;line-height:1.05;text-transform:uppercase}
+.status.bad{color:var(--wicket)}
+.detail{margin:-6px 0 0;font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.status.good{color:var(--four)}
+.shot{margin:0;min-height:1.2em;font-family:var(--f-display);font-weight:900;font-size:clamp(40px,12vw,56px);line-height:1;text-transform:uppercase;color:var(--led)}
+.note{margin:auto 0 0;font-size:14px;color:var(--muted)}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.row .btn{padding:16px 6px}
+.btn[aria-pressed="true"]{background:var(--led);color:var(--led-ink);border-color:transparent}
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Air Cricket · phone as bat</p>
+  <h1 id="title">Connect to the game</h1>
+  <p class="lede" id="text">On the big screen, choose <b>Pair a phone as bat</b>. Then type the code it shows, or scan its QR code.</p>
+  <form id="join" autocomplete="off">
+    <label for="code">Code on the big screen</label>
+    <input id="code" maxlength="4" autocapitalize="characters" spellcheck="false" inputmode="text" aria-describedby="text">
+    <button class="btn primary" id="go" type="submit">Connect</button>
+  </form>
+  <p class="status" id="status" aria-live="polite"></p>
+  <p class="detail" id="detail" hidden></p>
+  <p class="shot" id="shot" aria-live="polite"></p>
+  <div class="row" id="pad" hidden>
+    <button class="btn" type="button" data-step="-1">◀ Step</button>
+    <button class="btn" type="button" id="loft" aria-pressed="false">Loft</button>
+    <button class="btn" type="button" data-step="1">Step ▶</button>
+  </div>
+  <button class="btn" id="recentre" type="button" hidden>Recentre</button>
+  <p class="note">Grip the phone firmly and keep clear of people and furniture: a short, sharp flick is enough. Keep this screen on while you play. Needs an Android phone, in Chrome.</p>
+</main>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+// the game's pairing: PeerJS's free public server passes the connection offer and answer, then the phone
+// and the game talk over a WebRTC data channel: directly when the network allows it, through PeerJS's
+// public TURN relay when it doesn't
+const SIG = Object.assign({ host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' }, window.AC_PEER || {});
+const ICE = [{ urls: 'stun:stun.l.google.com:19302' },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
+const NO_LINK = 'Found the big screen but couldn’t connect to it. Put both on the same Wi-Fi (not a guest network) and try again.';
+let ws = null, beat = 0, pc = null, dc = null, game = '', described = false, queued = [], waitTimer = 0, wake = null;
+let gotMotion = false, sensorsOn = false, shotTimer = 0;
+
+const params = new URLSearchParams(location.search);
+if (params.get('c')) $('code').value = params.get('c').toUpperCase().slice(0, 4);
+
+function say(text, kind) { const s = $('status'); s.textContent = text; s.className = 'status' + (kind ? ' ' + kind : ''); }
+const sig = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+const send = m => { if (dc && dc.readyState === 'open') try { dc.send(JSON.stringify(m)); } catch (_) {} };
+const r1 = v => Math.round(v * 10) / 10, r2 = v => (v == null ? v : Math.round(v * 100) / 100);
+
+// readings go straight out: [kind, this phone's clock in ms, alpha, beta, gamma]; the game lines the clocks up
+function onMotion(e) {
+  const r = e.rotationRate;
+  if (!r || r.alpha == null) return;
+  gotMotion = true;
+  send(['m', r1(e.timeStamp), r2(r.alpha), r2(r.beta), r2(r.gamma)]);
+}
+function onOrient(e) {
+  if (e.beta == null) return;
+  send(['o', r1(e.timeStamp), r2(e.alpha), r2(e.beta), r2(e.gamma)]);
+}
+function startSensors() {
+  if (sensorsOn) return;
+  sensorsOn = true;
+  window.addEventListener('devicemotion', onMotion);
+  window.addEventListener('deviceorientation', onOrient);
+}
+function keepAwake() {
+  if (navigator.wakeLock && !wake) navigator.wakeLock.request('screen').then(w => { wake = w; w.addEventListener('release', () => { wake = null; }); }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && dc) keepAwake(); });
+
+function cleanup() {
+  clearInterval(beat); clearTimeout(waitTimer);
+  if (pc) try { pc.close(); } catch (_) {}
+  if (ws) try { ws.onclose = null; ws.close(); } catch (_) {}
+  ws = null; pc = null; dc = null; described = false; queued = [];
+}
+// detail: the technical reason in small print, so a screenshot says exactly where it stopped
+function failed(text, detail) {
+  cleanup();
+  say(text, 'bad');
+  $('detail').textContent = detail || ''; $('detail').hidden = !detail;
+  $('join').hidden = false; $('go').disabled = false; $('go').textContent = 'Try again';
+  $('recentre').hidden = true; $('pad').hidden = true;
+}
+
+// every step of connecting, timed from the tap, shown in small print if it fails (a retry adds to it)
+let t0 = 0, steps = [];
+const mark = s => steps.push(`${s} ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+const timeline = () => steps.join(' · ');
+
+function connect(code, retry) {
+  cleanup();
+  if (!retry) { t0 = performance.now(); steps = []; }
+  game = 'aircricket-' + code.toLowerCase();
+  const id = 'aircricket-bat-' + Math.random().toString(36).slice(2, 10), token = Math.random().toString(36).slice(2);
+  const OFFLINE = 'Couldn’t reach the pairing service. Check your internet connection.';
+  let opened = false, answered = false;
+  const waitFor = (ms, text, why) => { clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (!dc) { mark(why); failed(text, timeline()); } }, ms); };
+  say(retry ? 'Lost the pairing service · trying again…' : 'Reaching the pairing service…');
+  $('detail').hidden = true;
+  $('go').disabled = true;
+  waitFor(12000, OFFLINE, 'no reply');
+  const s = ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}&version=1.5.5`);
+  s.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+    if (m.type === 'OPEN') {
+      opened = true; mark('service');
+      beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000);
+      say('Asking the big screen…');
+      waitFor(8000, OFFLINE, 'no routes');                     // finding this phone's routes takes up to 2.5 s
+      offer(() => waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`, 'no answer'));
+    } else if (m.type === 'ANSWER' && m.src === game && pc) {
+      answered = true; mark('answered');
+      say('The big screen answered · connecting…');
+      waitFor(30000, NO_LINK, 'no link');
+      pc.setRemoteDescription(m.payload.sdp).then(() => { described = true; queued.splice(0).forEach(addCandidate); })
+        .catch(() => { mark('bad answer'); failed(NO_LINK, timeline()); });
+    } else if (m.type === 'CANDIDATE' && m.src === game) addCandidate(m.payload && m.payload.candidate);
+    else if (m.type === 'EXPIRE' || (m.type === 'LEAVE' && m.src === game)) {
+      if (!dc) { mark(m.type.toLowerCase()); failed(`No game is waiting with code ${code.toUpperCase()}. Check the code on the big screen.`, timeline()); }
+    } else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') {
+      if (!dc) { mark(m.type === 'ERROR' ? `said “${(m.payload && m.payload.msg) || 'error'}”` : 'id taken'); failed(OFFLINE, timeline()); }
+    }
+  };
+  // an error is always followed by a close, which carries the code
+  s.onclose = e => {
+    if (ws !== s || dc) return;
+    mark(`closed ${e.code}`); clearInterval(beat);
+    if (answered) return;                                  // the big screen has answered: the link can finish without the service
+    if (opened && !retry) { connect(code, true); return; } // dropped before the answer: ask once more on a fresh connection
+    failed(OFFLINE, `${SIG.host}: ${timeline()}`);
+  };
+}
+async function offer(onSent) {
+  const p = pc = new RTCPeerConnection({ iceServers: ICE });
+  const c = p.createDataChannel('bat');
+  c.onopen = () => {
+    if (p !== pc) return;
+    dc = c; clearTimeout(waitTimer);
+    keepAwake();
+    $('join').hidden = true; $('recentre').hidden = false; $('pad').hidden = false;
+    $('title').textContent = 'Hold it like your bat';
+    $('text').textContent = 'Upright in front of you, screen toward you, with your hands at the bottom like the handle. Watch the big screen and swing.';
+    say('Connected', 'good');
+    setTimeout(() => { if (dc === c && !gotMotion) failed('This phone’s motion sensors aren’t available. Phone as bat needs an Android phone with a gyroscope, in Chrome.'); }, 2500);
+  };
+  c.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (_) { return; } onData(m); };
+  c.onclose = () => { if (dc === c) failed('Disconnected from the big screen. Tap Try again to rejoin.'); };
+  p.onconnectionstatechange = () => { if (p === pc && p.connectionState === 'failed') { mark('link failed'); failed(NO_LINK, timeline()); } };
+  try {
+    await p.setLocalDescription(await p.createOffer());
+    // every route this phone can be reached by goes inside the one offer, so only two messages cross the
+    // service; they're shaped exactly as PeerJS's own client sends them
+    await gathered(p, 2500);
+    if (p !== pc) return;
+    const cid = 'dc_' + Math.random().toString(36).slice(2, 12);
+    mark('asked');
+    sig({ type: 'OFFER', payload: { sdp: p.localDescription.toJSON(), type: 'data', connectionId: cid, label: cid, reliable: true, serialization: 'json', browser: 'chrome' }, dst: game });
+    onSent();
+  } catch (_) { failed('Couldn’t start a connection on this phone. Reload the page and try again.'); }
+}
+// resolves once the browser has found its routes (or after ms, with what it has by then)
+function gathered(p, ms) {
+  return new Promise(res => {
+    if (p.iceGatheringState === 'complete') return res();
+    const t = setTimeout(res, ms);
+    p.addEventListener('icegatheringstatechange', () => { if (p.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+  });
+}
+function addCandidate(c) {
+  if (!c || !pc) return;
+  if (!described) { queued.push(c); return; }
+  pc.addIceCandidate(c).catch(() => {});
+}
+function onData(m) {
+  if (!m) return;
+  if (m.type === 'ping') send({ type: 'pong', t0: m.t0, t1: performance.now() });
+  else if (m.type === 'buzz' && navigator.vibrate) try { navigator.vibrate(m.p); } catch (_) {}
+  else if (m.type === 'status') say(m.text, /ready/i.test(m.text) ? 'good' : '');
+  else if (m.type === 'loft') $('loft').setAttribute('aria-pressed', String(!!m.on));
+  else if (m.type === 'chip') {
+    // the game's bat chip: what the last swing read as, or that it's ready
+    const ready = /^Bat · /.test(m.text);
+    if (!ready) { $('shot').textContent = m.text; clearTimeout(shotTimer); shotTimer = setTimeout(() => { $('shot').textContent = ''; }, 2500); }
+    if (/no signal/i.test(m.text)) say('The big screen isn’t getting readings. Keep this screen on.', 'bad');
+    else if (ready) say('Playing · swing when the ball comes', 'good');
+  }
+}
+
+$('join').addEventListener('submit', e => {
+  e.preventDefault();
+  const code = $('code').value.trim().toUpperCase().replace(/[^A-Z]/g, '');
+  $('code').value = code;
+  if (code.length !== 4) { say('The code is four letters', 'bad'); $('code').focus(); return; }
+  if (!window.isSecureContext || !('DeviceMotionEvent' in window)) { say('Open this page over https in Chrome on an Android phone', 'bad'); return; }
+  startSensors();          // this tap also lets the phone buzz and keep its screen on
+  keepAwake();
+  connect(code);
+});
+$('recentre').addEventListener('click', () => { send({ type: 'recentre' }); say('Recentred', 'good'); });
+// stepping across and lofting, as on the game's own buttons
+$('pad').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.step) send({ type: 'step', d: +b.dataset.step }); else send({ type: 'loft' });
+});
+$('code').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4); });
+})();
+</script>
+</body>
+</html>

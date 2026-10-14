@@ -58,7 +58,8 @@ The fastest moment of the swing is when bat meets ball, so that's what your timi
 Open the game on the big screen and pick **Pair a phone as bat**, then **Pair phone**. It shows a QR code and a four-letter code. Scan the QR code with your Android phone (or open `dhruwayush.github.io/air-cricket/bat.html` in Chrome and type the code) and tap **Connect**. Hold still for a second and play: you watch the big screen and swing the phone, with the same gestures as above.
 
 - The phone page has **Step**, **Loft** and **Recentre** buttons, shows what each swing read as, and buzzes when you hit it. The keyboard on the big screen still works too.
-- Both devices need the internet to pair. PeerJS's free public server only introduces them; after that they talk directly (WebRTC), so it works best on the same Wi-Fi.
+- Both devices need the internet to pair. PeerJS's free public server introduces them; after that they talk directly (WebRTC), and when the network won't allow a direct link (some routers, guest Wi-Fi) PeerJS's public relay carries the readings instead. The same Wi-Fi works best.
+- If pairing fails, both screens say which step it got to: reaching the pairing service, the big screen answering, or connecting.
 - The phone stamps every reading with its own clock, and the game lines the two clocks up with quick pings, so the network delay doesn't change your timing.
 - If the phone drops out, the scoreboard chip says **no signal**; tap Connect on the phone again to carry on.
 
@@ -118,7 +119,7 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.
 - **Phone as bat** reads the gyroscope's rotation rate and the phone's orientation about 60 times a second. A swing starts when the rotation speeds up past a threshold, and contact is its fastest moment, found between readings by fitting a curve through the peak (or the middle of a flat top, when a hard swing maxes out the gyroscope). The shot comes from which way the phone was pointing and moving at that moment, measured against the direction you faced when you set it up, which is quietly re-taken whenever you hold still while the bowler runs in. Because the sensor only knows the peak a moment after it, the shot is dated back to it, and the ball waits for a swing that is under way before deciding it hit your pads.
-- **Pairing** uses no libraries: the big screen registers its code with PeerJS's public signalling server over a WebSocket, the phone sends a WebRTC offer through it, and the readings then flow over a direct data channel into the same swing detector. The QR code is drawn by a small encoder in the page.
+- **Pairing** uses no libraries: the big screen registers its code with PeerJS's public signalling server over a WebSocket, the phone sends a WebRTC offer through it, and the readings then flow over a data channel (direct, or through PeerJS's TURN relay) into the same swing detector. The QR code is drawn by a small encoder in the page.
 
 ## Modes
 

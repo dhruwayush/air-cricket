@@ -3045,7 +3045,10 @@ const motion = (() => {
 const BAT_PAGE = 'https://dhruwayush.github.io/air-cricket/bat.html';
 const link = (() => {
   const SIG = Object.assign({ host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' }, window.AC_PEER || {});
-  const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+  // STUN finds a direct route; when the network won't allow one (no hairpinning on the router, a guest Wi-Fi
+  // that keeps devices apart), PeerJS's public TURN servers relay the readings instead
+  const ICE = [{ urls: 'stun:stun.l.google.com:19302' },
+    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
   let ws = null, beat = 0, pc = null, dc = null, phone = null, code = '', listener = () => {};
   let syncs = [], offset = null, pingTimer = 0, queued = [], described = false;
   const fail = kind => Object.assign(new Error(kind), { kind });
@@ -3060,7 +3063,8 @@ const link = (() => {
     return u.href;
   }
 
-  // listen under a fresh four-letter code; on(event) hears 'connected' and 'closed'
+  // listen under a fresh four-letter code; on(event) hears 'offer' (a phone is trying), 'failed' (it couldn't
+  // get through), 'connected' and 'closed'
   async function open(on) {
     listener = on || (() => {});
     if (ws && ws.readyState === 1 && code) return code;
@@ -3092,6 +3096,7 @@ const link = (() => {
   async function answer(src, sdp) {
     drop(false);                                     // the latest phone to connect is the bat
     phone = src; described = false; queued = [];
+    listener('offer');
     const p = pc = new RTCPeerConnection({ iceServers: ICE });
     p.onicecandidate = e => { if (e.candidate) sig({ type: 'CANDIDATE', dst: src, payload: { candidate: e.candidate.toJSON() } }); };
     p.ondatachannel = e => {
@@ -3106,7 +3111,11 @@ const link = (() => {
       c.onmessage = ev => { if (c === dc) try { onData(JSON.parse(ev.data)); } catch (_) {} };
       c.onclose = () => { if (c === dc) drop(true); };
     };
-    p.onconnectionstatechange = () => { if (p === pc && (p.connectionState === 'failed' || p.connectionState === 'closed')) drop(true); };
+    p.onconnectionstatechange = () => {
+      if (p !== pc || (p.connectionState !== 'failed' && p.connectionState !== 'closed')) return;
+      if (!dc) listener('failed');                   // never got as far as the data channel
+      drop(true);
+    };
     try {
       await p.setRemoteDescription(sdp);
       described = true; queued.splice(0).forEach(addCandidate);
@@ -3772,7 +3781,9 @@ async function beginPairing() {
 }
 function onLinkEvent(ev) {
   const setup = !$('calib').hidden && state.ctrl === 'remote';
-  if (ev === 'connected' && setup) holdStillRemote();
+  if (ev === 'offer' && setup && !link.connected) $('calib-status').textContent = 'Phone found · connecting…';
+  else if (ev === 'failed' && setup) $('calib-status').textContent = 'Couldn’t reach the phone · tap Connect on it again';
+  else if (ev === 'connected' && setup) holdStillRemote();
   else if (ev === 'closed' && setup) { $('calib-status').textContent = 'Phone disconnected · tap Connect on it again'; $('calib-bar').style.width = '0%'; motion.cancel(); }
 }
 async function holdStillRemote() {

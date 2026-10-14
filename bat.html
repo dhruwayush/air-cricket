@@ -74,9 +74,12 @@ input:focus{outline:2px solid var(--led);outline-offset:2px}
 'use strict';
 const $ = id => document.getElementById(id);
 // the game's pairing: PeerJS's free public server passes the connection offer and answer, then the phone
-// and the game talk directly over a WebRTC data channel
+// and the game talk over a WebRTC data channel: directly when the network allows it, through PeerJS's
+// public TURN relay when it doesn't
 const SIG = Object.assign({ host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' }, window.AC_PEER || {});
-const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+const ICE = [{ urls: 'stun:stun.l.google.com:19302' },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
+const NO_LINK = 'Found the big screen but couldn’t connect to it. Put both on the same Wi-Fi (not a guest network) and try again.';
 let ws = null, beat = 0, pc = null, dc = null, game = '', described = false, queued = [], waitTimer = 0, wake = null;
 let gotMotion = false, sensorsOn = false, shotTimer = 0;
 
@@ -127,20 +130,30 @@ function connect(code) {
   cleanup();
   game = 'aircricket-' + code.toLowerCase();
   const id = 'aircricket-bat-' + Math.random().toString(36).slice(2, 10), token = Math.random().toString(36).slice(2);
-  say('Connecting…');
+  const OFFLINE = 'Couldn’t reach the pairing service. Check your internet connection.';
+  // each step says where it got to, so a failure says which step it was
+  const waitFor = (ms, text) => { clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (!dc) failed(text); }, ms); };
+  say('Reaching the pairing service…');
   $('go').disabled = true;
+  waitFor(12000, OFFLINE);
   ws = new WebSocket(`${SIG.secure ? 'wss' : 'ws'}://${SIG.host}:${SIG.port}${SIG.path}peerjs?key=${SIG.key}&id=${id}&token=${token}`);
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
-    if (m.type === 'OPEN') { beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000); offer(); }
-    else if (m.type === 'ANSWER' && m.src === game && pc) {
-      pc.setRemoteDescription(m.payload.sdp).then(() => { described = true; queued.splice(0).forEach(addCandidate); }).catch(() => failed('Couldn’t connect. Try again.'));
+    if (m.type === 'OPEN') {
+      beat = setInterval(() => sig({ type: 'HEARTBEAT' }), 5000);
+      say('Asking the big screen…');
+      waitFor(12000, `The big screen didn’t answer. Keep the game open and in front on the big screen, showing code ${code.toUpperCase()}, and try again.`);
+      offer();
+    } else if (m.type === 'ANSWER' && m.src === game && pc) {
+      say('The big screen answered · connecting…');
+      waitFor(30000, NO_LINK);
+      pc.setRemoteDescription(m.payload.sdp).then(() => { described = true; queued.splice(0).forEach(addCandidate); }).catch(() => failed(NO_LINK));
     } else if (m.type === 'CANDIDATE' && m.src === game) addCandidate(m.payload && m.payload.candidate);
     else if (m.type === 'EXPIRE' || (m.type === 'LEAVE' && m.src === game)) { if (!dc) failed(`No game is waiting with code ${code.toUpperCase()}. Check the code on the big screen.`); }
-    else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') { if (!dc) failed('Couldn’t reach the pairing service. Check your internet connection.'); }
+    else if (m.type === 'ERROR' || m.type === 'ID-TAKEN') { if (!dc) failed(OFFLINE); }
   };
-  ws.onerror = () => { if (!dc) failed('Couldn’t reach the pairing service. Check your internet connection.'); };
-  waitTimer = setTimeout(() => { if (!dc) failed('The big screen didn’t answer. Check the code, and that both have the internet.'); }, 20000);
+  ws.onerror = () => { if (!dc) failed(OFFLINE); };
+  ws.onclose = () => { if (!dc) failed(OFFLINE); };
 }
 async function offer() {
   const p = pc = new RTCPeerConnection({ iceServers: ICE });
@@ -158,11 +171,11 @@ async function offer() {
   c.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (_) { return; } onData(m); };
   c.onclose = () => { if (dc === c) failed('Disconnected from the big screen. Tap Try again to rejoin.'); };
   p.onicecandidate = e => { if (e.candidate) sig({ type: 'CANDIDATE', dst: game, payload: { candidate: e.candidate.toJSON() } }); };
-  p.onconnectionstatechange = () => { if (p === pc && p.connectionState === 'failed') failed('Couldn’t connect directly to the big screen. Put both on the same Wi-Fi and try again.'); };
+  p.onconnectionstatechange = () => { if (p === pc && p.connectionState === 'failed') failed(NO_LINK); };
   try {
     await p.setLocalDescription(await p.createOffer());
     sig({ type: 'OFFER', dst: game, payload: { sdp: p.localDescription.toJSON() } });
-  } catch (_) { failed('Couldn’t connect. Try again.'); }
+  } catch (_) { failed('Couldn’t start a connection on this phone. Reload the page and try again.'); }
 }
 function addCandidate(c) {
   if (!c || !pc) return;

@@ -53,6 +53,15 @@ The fastest moment of the swing is when bat meets ball, so that's what your timi
 
 **Swing sensitivity** sets how hard you need to swing, and **Sensor delay fix** makes up for the time the phone takes to report a movement. A short, sharp flick is enough: grip it firmly and keep clear of people and furniture. **Copy swing data** (under the settings) copies your last few swings as raw sensor readings, for tuning the gestures.
 
+### Pair a phone as bat (play on a laptop or TV)
+
+Open the game on the big screen and pick **Pair a phone as bat**, then **Pair phone**. It shows a QR code and a four-letter code. Scan the QR code with your Android phone (or open `dhruwayush.github.io/air-cricket/bat.html` in Chrome and type the code) and tap **Connect**. Hold still for a second and play: you watch the big screen and swing the phone, with the same gestures as above.
+
+- The phone page has **Step**, **Loft** and **Recentre** buttons, shows what each swing read as, and buzzes when you hit it. The keyboard on the big screen still works too.
+- Both devices need the internet to pair. PeerJS's free public server only introduces them; after that they talk directly (WebRTC), so it works best on the same Wi-Fi.
+- The phone stamps every reading with its own clock, and the game lines the two clocks up with quick pings, so the network delay doesn't change your timing.
+- If the phone drops out, the scoreboard chip says **no signal**; tap Connect on the phone again to carry on.
+
 ## Android app
 
 Every push to `main` builds an APK on GitHub Actions. Download the latest from
@@ -61,6 +70,7 @@ Every push to `main` builds an APK on GitHub Actions. Download the latest from
 - The game, three.js and fonts are bundled, so it plays offline. Hand tracking still downloads its model the first time.
 - The camera modes work in the app (Android asks for camera permission the first time).
 - Phone as bat works in the app too: it locks the screen's rotation while you play and buzzes on contact.
+- The app can also be the big screen for **Pair a phone as bat**; the phone end always opens the GitHub Pages `bat.html`.
 - New builds install over the old one, no uninstall needed.
 
 To build locally you need Node 22, JDK 21 and the Android SDK:
@@ -108,6 +118,7 @@ npm run apk      # -> android/app/build/outputs/apk/debug/app-debug.apk
 - A perfectly timed shot gets a short hit-stop, a slow-motion moment and camera shake. On Club level the spot where the ball will pitch is shown as it is bowled.
 - All input goes through `requestShot(direction)` and `setGuard(position)`, so new controllers can plug in without touching game logic.
 - **Phone as bat** reads the gyroscope's rotation rate and the phone's orientation about 60 times a second. A swing starts when the rotation speeds up past a threshold, and contact is its fastest moment, found between readings by fitting a curve through the peak (or the middle of a flat top, when a hard swing maxes out the gyroscope). The shot comes from which way the phone was pointing and moving at that moment, measured against the direction you faced when you set it up, which is quietly re-taken whenever you hold still while the bowler runs in. Because the sensor only knows the peak a moment after it, the shot is dated back to it, and the ball waits for a swing that is under way before deciding it hit your pads.
+- **Pairing** uses no libraries: the big screen registers its code with PeerJS's public signalling server over a WebSocket, the phone sends a WebRTC offer through it, and the readings then flow over a direct data channel into the same swing detector. The QR code is drawn by a small encoder in the page.
 
 ## Modes
 
@@ -126,6 +137,7 @@ Your daily results, streak and wins in each mode are kept in the browser (`local
 | Path | What it is |
 | --- | --- |
 | `src/game.html` | The game source |
+| `bat.html` | The phone end of **Pair a phone as bat** (served as is, not built) |
 | `tools/players.py` | Builds, rigs and animates the players in Blender and exports `tools/build/*.glb` |
 | `tools/build_page.py` | Embeds the models and commentary into `src/game.html` and writes `index.html` |
 | `tools/voice_lines.py` | Every commentary line, and a script that records them with Edge's neural voices |
